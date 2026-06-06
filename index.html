@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive 3D Particle Hand Tracker</title>
+    <title>Quantum Space Matrix v2</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #000;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #020208;
+            font-family: 'Courier New', Courier, monospace;
         }
         #canvas-container {
             width: 100vw;
@@ -19,37 +19,40 @@
             left: 0;
             z-index: 1;
         }
-        /* Hidden video element used for MediaPipe tracking */
         #webcam {
             position: absolute;
-            bottom: 20px;
-            right: 20px;
-            width: 160px;
-            height: 120px;
-            transform: scaleX(-1); /* Mirror view */
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
+            bottom: 30px;
+            right: 30px;
+            width: 320px;
+            height: 240px;
+            transform: scaleX(-1);
+            border: 2px solid #00ffcc;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
             z-index: 10;
+            background: #000;
         }
         #ui-overlay {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
+            top: 30px;
+            left: 30px;
+            color: #fff;
             z-index: 10;
             pointer-events: none;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
-        h1 { margin: 0 0 5px 0; font-size: 1.5rem; letter-spacing: 1px; }
-        p { margin: 0 0 15px 0; font-size: 0.9rem; color: #ccc; }
+        h1 { margin: 0 0 5px 0; font-size: 1.8rem; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.5); }
+        p { margin: 0 0 20px 0; font-size: 0.85rem; color: #8899a6; }
         .instructions {
-            background: rgba(0, 0, 0, 0.6);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(5, 5, 20, 0.75);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #00ffcc;
+            box-shadow: inset 0 0 15px rgba(0, 255, 204, 0.1);
+            max-width: 400px;
         }
-        .gesture-item { margin-bottom: 8px; font-size: 0.85rem; }
-        .active-template { color: #00ffcc; font-weight: bold; }
+        .gesture-item { margin-bottom: 10px; font-size: 0.85rem; color: #e2e8f0; }
+        .gesture-item b { color: #00ffcc; }
+        .active-template { color: #ff00ff !important; font-weight: bold; text-shadow: 0 0 8px #ff00ff; }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -62,78 +65,273 @@
     <video id="webcam" autoplay playsinline></video>
 
     <div id="ui-overlay">
-        <h1>Hand Gesture Particle Matrix</h1>
-        <p>Ensure your webcam is on and your hand is in view.</p>
+        <h1>QUANTUM SPACE MATRIX</h1>
+        <p>System status: Router Remapped // GPU Accelerated</p>
         <div class="instructions">
-            <div class="gesture-item">↔️ <b>Pinch Distance (Thumb & Index):</b> Scale System Size</div>
-            <div class="gesture-item">✋ <b>Hand Open/Close:</b> Explode / Implode Particles</div>
-            <div class="gesture-item">☝️ <b>1 Finger Up:</b> Morph to <span id="t0" class="active-template">Heart</span></div>
-            <div class="gesture-item">✌️ <b>2 Fingers Up:</b> Morph to <span id="t1">Flower</span></div>
-            <div class="gesture-item">🤟 <b>3 Fingers Up:</b> Morph to <span id="t2">Saturn</span></div>
-            <div class="gesture-item">✋ <b>5 Fingers Up:</b> Morph to <span id="t3">Fireworks</span></div>
+            <div class="gesture-item">✊/☝️ <b>0 or 1 Finger:</b> <span id="t0" class="active-template">Cosmic Heart</span></div>
+            <div class="gesture-item">✌️ <b>2 Fingers Up:</b> <span id="t1">Saturn Rings</span></div>
+            <div class="gesture-item">🤟 <b>3 Fingers Up:</b> <span id="t2">Spiral Galaxy</span></div>
+            <div class="gesture-item">🖖 <b>4 Fingers Up:</b> <span id="t3">Wormhole Tunnel</span></div>
+            <div class="gesture-item">✋ <b>5 Fingers Up:</b> <span id="t4">Big Bang Fireworks</span></div>
+            <hr style="border: 0; border-top: 1px dashed #00ffcc; margin: 12px 0;">
+            <div class="gesture-item">↔️ <b>Pinch Width:</b> Scale Space Continuum</div>
+            <div class="gesture-item">🔄 <b>Hand Tilt Angle:</b> Shift Matrix Spectrum</div>
         </div>
     </div>
 
-    <script>
-        // --- Globals & Configuration ---
-        const PARTICLE_COUNT = 15000;
-        let scene, camera, renderer, particleGeometry, particleSystem;
-        let currentPositions = new Float32Array(PARTICLE_COUNT * 3);
-        let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
-        let particleColors = new Float32Array(PARTICLE_COUNT * 3);
+    <script id="vertexShader" type="x-shader/x-vertex">
+        uniform float uMix;
+        uniform float uScale;
+        uniform float uHueShift;
+        uniform float uTime;
         
-        // Dynamic controls driven by hand gestures
-        let globalScale = 1.0;
-        let explosionFactor = 0.0;
-        let colorHueOffset = 0.0;
+        attribute vec3 aTarget;
+        attribute vec3 aColorTarget;
+        
+        varying vec3 vColor;
+        
+        vec3 hueShift(vec3 color, float angle) {
+            vec3 k = vec3(0.57735, 0.57735, 0.57735);
+            float cosAngle = cos(angle);
+            return color * cosAngle + cross(k, color) * sin(angle) + k * dot(k, color) * (1.0 - cosAngle);
+        }
+
+        void main() {
+            vec3 mixedPosition = mix(position, aTarget, uMix);
+            mixedPosition *= uScale;
+            
+            // Subtle stellar wind breathing effect
+            mixedPosition.x += sin(uTime * 1.5 + mixedPosition.z * 0.1) * 0.08;
+            mixedPosition.y += cos(uTime * 1.2 + mixedPosition.x * 0.1) * 0.08;
+
+            vec4 mvPosition = modelViewMatrix * vec4(mixedPosition, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+            
+            gl_PointSize = (7.5 / -mvPosition.z) * (2.0 + sin(uTime + mixedPosition.x * 0.05) * 0.4);
+            
+            vec3 mixedColor = mix(color, aColorTarget, uMix);
+            vColor = hueShift(mixedColor, uHueShift);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        varying vec3 vColor;
+        void main() {
+            float dist = distance(gl_PointCoord, vec2(0.5, 0.5));
+            if (dist > 0.5) discard;
+            float intensity = 1.0 - (dist * 2.0);
+            gl_FragColor = vec4(vColor, intensity * 0.85);
+        }
+    </script>
+
+    <script>
+        const PARTICLE_COUNT = 25000;
+        let scene, camera, renderer, shaderMaterial, particleGeometry, particleSystem;
+        
+        let currentPositions = new Float32Array(PARTICLE_COUNT * 3);
+        let currentColors = new Float32Array(PARTICLE_COUNT * 3);
+        let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+        let targetColors = new Float32Array(PARTICLE_COUNT * 3);
+
         let currentTemplateIndex = 0;
+        let transitionProgress = 1.0; 
+        let targetScale = 1.0;
+        let targetHue = 0.0;
+        let currentScale = 1.0;
+        let currentHue = 0.0;
+        const clock = new THREE.Clock();
 
         const videoElement = document.getElementById('webcam');
         const container = document.getElementById('canvas-container');
 
-        // --- 1. Three.js Initialization ---
         function initThree() {
             scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x000000, 0.015);
+            scene.background = new THREE.Color(0x020208);
+            scene.fog = new THREE.FogExp2(0x020208, 0.012);
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 40;
+            camera.position.set(0, 0, 45);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             container.appendChild(renderer.domElement);
 
-            // Create geometry dynamically updated via CPU
+            generateBackgroundStars();
+
+            generateShapeData(0, currentPositions, currentColors); 
+            targetPositions.set(currentPositions);
+            targetColors.set(currentColors);
+
             particleGeometry = new THREE.BufferGeometry();
-            
-            // Generate initial random block of data
-            for(let i = 0; i < PARTICLE_COUNT * 3; i++) {
-                currentPositions[i] = (Math.random() - 0.5) * 50;
-                targetPositions[i] = currentPositions[i];
-                particleColors[i] = Math.random();
-            }
-
             particleGeometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
-            particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(currentColors, 3));
+            particleGeometry.setAttribute('aTarget', new THREE.BufferAttribute(targetPositions, 3));
+            particleGeometry.setAttribute('aColorTarget', new THREE.BufferAttribute(targetColors, 3));
 
-            // Particle shader material mapping vertex color
-            const particleMaterial = new THREE.PointsMaterial({
-                size: 0.25,
-                vertexColors: true,
+            shaderMaterial = new THREE.ShaderMaterial({
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent,
+                uniforms: {
+                    uMix: { value: 1.0 },
+                    uScale: { value: 1.0 },
+                    uHueShift: { value: 0.0 },
+                    uTime: { value: 0.0 }
+                },
                 transparent: true,
-                opacity: 0.85,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false
             });
 
-            particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            particleSystem = new THREE.Points(particleGeometry, shaderMaterial);
             scene.add(particleSystem);
 
-            // Generate initial shapes targets
-            generateShape(0); // Default to Heart
-
             window.addEventListener('resize', onWindowResize);
+        }
+
+        function generateBackgroundStars() {
+            const starGeo = new THREE.BufferGeometry();
+            const count = 1200;
+            const arr = new Float32Array(count * 3);
+            for(let i=0; i<count*3; i++) { arr[i] = (Math.random() - 0.5) * 250; }
+            starGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+            const starMat = new THREE.PointsMaterial({size: 0.25, color: 0x4455aa, transparent: true, opacity: 0.4});
+            const stars = new THREE.Points(starGeo, starMat);
+            scene.add(stars);
+        }
+
+        // --- Space Matrix Structural Data Engine ---
+        function generateShapeData(type, posArr, colArr) {
+            let pIdx = 0;
+            const c = new THREE.Color();
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let x = 0, y = 0, z = 0;
+
+                switch (type) {
+                    case 0: // Cosmic Heart (0 or 1 Finger)
+                        let t = Math.PI * 2 * (i / PARTICLE_COUNT) * 150;
+                        x = 16 * Math.pow(Math.sin(t), 3) * 0.7;
+                        y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.7;
+                        z = (Math.random() - 0.5) * 4;
+                        c.setHSL(0.95 + (Math.random()*0.05), 0.85, 0.55);
+                        break;
+
+                    case 1: // Saturn (2 Fingers)
+                        if (i < PARTICLE_COUNT * 0.35) {
+                            let u = Math.random(), v = Math.random();
+                            let tSat = u * 2.0 * Math.PI, pSat = Math.acos(2.0 * v - 1.0);
+                            let rad = 5.5 + Math.random() * 0.5;
+                            x = rad * Math.sin(pSat) * Math.cos(tSat);
+                            y = rad * Math.sin(pSat) * Math.sin(tSat) * 0.8;
+                            z = rad * Math.cos(pSat);
+                            c.setHSL(0.08, 0.8, 0.5);
+                        } else {
+                            let ringRad = 8.5 + Math.random() * 11.0;
+                            let ringT = Math.random() * Math.PI * 2;
+                            x = ringRad * Math.cos(ringT);
+                            y = (Math.random() - 0.5) * 0.3;
+                            z = ringRad * Math.sin(ringT);
+                            c.setHSL(0.14, 0.65, 0.45);
+                        }
+                        break;
+
+                    case 2: // Spiral Galaxy (3 Fingers)
+                        let arm = i % 2 === 0 ? 0.0 : Math.PI;
+                        let galDist = Math.pow(Math.random(), 1.4) * 22;
+                        let galTheta = galDist * 0.55 + arm + (Math.random() - 0.5) * 0.25;
+                        x = galDist * Math.cos(galTheta);
+                        y = (Math.random() - 0.5) * (3.0 - galDist * 0.12);
+                        z = galDist * Math.sin(galTheta);
+                        c.setHSL(0.58 + (galDist * 0.012), 0.9, 0.5 + (1.0 - galDist/22)*0.3);
+                        break;
+
+                    case 3: // Wormhole (4 Fingers)
+                        let percent = (i / PARTICLE_COUNT);
+                        let wZ = (percent - 0.5) * 40; // Tunnel depth vector
+                        let wTheta = percent * Math.PI * 160; // Hyper-spiral wrap
+                        let wRadius = 4.0 + Math.pow(Math.abs(percent - 0.5), 2.0) * 25.0;
+                        x = wRadius * Math.cos(wTheta);
+                        y = wRadius * Math.sin(wTheta);
+                        z = wZ;
+                        c.setHSL(0.70 + (percent * 0.15), 0.95, 0.45 + (1.0 - Math.abs(percent - 0.5)*2.0)*0.3);
+                        break;
+
+                    case 4: // Big Bang Shell / Fireworks (5 Fingers)
+                        let uF = Math.random(), vF = Math.random();
+                        let tF = uF * 2.0 * Math.PI, pF = Math.acos(2.0 * vF - 1.0);
+                        let vel = 12 + Math.random() * 15;
+                        x = vel * Math.sin(pF) * Math.cos(tF);
+                        y = vel * Math.sin(pF) * Math.sin(tF);
+                        z = vel * Math.cos(pF);
+                        c.setHSL(Math.random(), 0.9, 0.6);
+                        break;
+                }
+
+                posArr[pIdx] = x; posArr[pIdx+1] = y; posArr[pIdx+2] = z;
+                colArr[pIdx] = c.r; colArr[pIdx+1] = c.g; colArr[pIdx+2] = c.b;
+                pIdx += 3;
+            }
+        }
+
+        function triggerMorph(targetTemplateIndex) {
+            if (targetTemplateIndex === currentTemplateIndex) return;
+
+            const posAttr = particleGeometry.attributes.position;
+            const colAttr = particleGeometry.attributes.color;
+            
+            if(transitionProgress < 1.0) {
+                let mixVal = shaderMaterial.uniforms.uMix.value;
+                for(let i=0; i<PARTICLE_COUNT*3; i++){
+                    currentPositions[i] = currentPositions[i] + (targetPositions[i] - currentPositions[i]) * mixVal;
+                    currentColors[i] = currentColors[i] + (targetColors[i] - currentColors[i]) * mixVal;
+                }
+            } else {
+                currentPositions.set(targetPositions);
+                currentColors.set(targetColors);
+            }
+
+            posAttr.copyArray(currentPositions); posAttr.needsUpdate = true;
+            colAttr.copyArray(currentColors); colAttr.needsUpdate = true;
+
+            generateShapeData(targetTemplateIndex, targetPositions, targetColors);
+            
+            particleGeometry.attributes.aTarget.copyArray(targetPositions);
+            particleGeometry.attributes.aTarget.needsUpdate = true;
+            particleGeometry.attributes.aColorTarget.copyArray(targetColors);
+            particleGeometry.attributes.aColorTarget.needsUpdate = true;
+
+            currentTemplateIndex = targetTemplateIndex;
+            transitionProgress = 0.0;
+
+            for(let i=0; i<=4; i++) {
+                const el = document.getElementById(`t${i}`);
+                if(el) el.className = (i === targetTemplateIndex) ? 'active-template' : '';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+
+            if (transitionProgress < 1.0) {
+                transitionProgress += delta * 1.4; // Morph acceleration
+                if(transitionProgress > 1.0) transitionProgress = 1.0;
+                shaderMaterial.uniforms.uMix.value = transitionProgress;
+            }
+
+            currentScale += (targetScale - currentScale) * 0.12;
+            currentHue += (targetHue - currentHue) * 0.12;
+
+            shaderMaterial.uniforms.uScale.value = currentScale;
+            shaderMaterial.uniforms.uHueShift.value = currentHue;
+            shaderMaterial.uniforms.uTime.value = elapsed;
+
+            particleSystem.rotation.y = elapsed * 0.05;
+            particleSystem.rotation.x = elapsed * 0.02;
+
+            renderer.render(scene, camera);
         }
 
         function onWindowResize() {
@@ -142,228 +340,53 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- 2. Mathematical Particle Templates ---
-        function generateShape(templateType) {
-            currentTemplateIndex = templateType;
-            
-            // Update UI
-            for(let i=0; i<4; i++) {
-                const el = document.getElementById(`t${i}`);
-                if(el) el.className = (i === templateType) ? 'active-template' : '';
-            }
-
-            let pIdx = 0;
-            const color = new THREE.Color();
-
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                let x = 0, y = 0, z = 0;
-
-                switch (templateType) {
-                    case 0: // Heart Shape (Parametric 3D Heart)
-                        let t = Math.PI * 2 * (i / PARTICLE_COUNT) * 100; 
-                        let phi = Math.acos((Math.random() * 2) - 1);
-                        x = 16 * Math.pow(Math.sin(t), 3) * 0.7;
-                        y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.7;
-                        z = (Math.random() - 0.5) * 6 * Math.sin(t);
-                        
-                        color.setHSL(0.95 + (Math.random() * 0.05), 0.9, 0.6);
-                        break;
-
-                    case 1: // Flower (Phyllotaxis / Rose Curve blend)
-                        let theta = i * 0.1;
-                        let r = 1.2 * Math.sqrt(i) * 0.15;
-                        let petals = Math.sin(theta * 5);
-                        x = r * Math.cos(theta) * (1 + petals * 0.3);
-                        y = r * Math.sin(theta) * (1 + petals * 0.3);
-                        z = Math.sin(r * 0.5) * 3;
-
-                        color.setHSL(0.3 + (r * 0.01) % 0.4, 0.8, 0.5);
-                        break;
-
-                    case 2: // Saturn Shape (Core sphere + flat outer disk)
-                        if (i < PARTICLE_COUNT * 0.4) { // Central Planet
-                            let u = Math.random();
-                            let v = Math.random();
-                            let thetaSat = u * 2.0 * Math.PI;
-                            let phiSat = Math.acos(2.0 * v - 1.0);
-                            let rad = 6 + Math.random()*0.5;
-                            x = rad * Math.sin(phiSat) * Math.cos(thetaSat);
-                            y = rad * Math.sin(phiSat) * Math.sin(thetaSat) * 0.8; // Oblate spheroid
-                            z = rad * Math.cos(phiSat);
-                            color.setHSL(0.12, 0.7, 0.5);
-                        } else { // Rings
-                            let ringRad = 9 + Math.random() * 12;
-                            let ringTheta = Math.random() * Math.PI * 2;
-                            x = ringRad * Math.cos(ringTheta);
-                            y = (Math.random() - 0.5) * 0.4;
-                            z = ringRad * Math.sin(ringTheta);
-                            color.setHSL(0.08 + (ringRad * 0.005), 0.6, 0.4);
-                        }
-                        break;
-
-                    case 3: // Fireworks (Spherical shell expansion vectors)
-                        let uF = Math.random();
-                        let vF = Math.random();
-                        let thetaF = uF * 2.0 * Math.PI;
-                        let phiF = Math.acos(2.0 * vF - 1.0);
-                        let Speed = 15 + Math.random() * 15;
-                        // Coordinates map structural escape vectors
-                        x = Speed * Math.sin(phiF) * Math.cos(thetaF);
-                        y = Speed * Math.sin(phiF) * Math.sin(thetaF);
-                        z = Speed * Math.cos(phiF);
-
-                        color.setHSL(Math.random(), 0.9, 0.6);
-                        break;
-                }
-
-                targetPositions[pIdx] = x;
-                targetPositions[pIdx + 1] = y;
-                targetPositions[pIdx + 2] = z;
-
-                // Color injection
-                particleColors[pIdx] = color.r;
-                particleColors[pIdx + 1] = color.g;
-                particleColors[pIdx + 2] = color.b;
-
-                pIdx += 3;
-            }
-            particleGeometry.attributes.color.needsUpdate = true;
-        }
-
-        // --- 3. Animation Loop & Interpolation ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const positions = particleGeometry.attributes.position.array;
-            const colors = particleGeometry.attributes.color.array;
-
-            // Slow idle background rotation
-            particleSystem.rotation.y += 0.003;
-            particleSystem.rotation.x += 0.001;
-
-            let pIdx = 0;
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                // Smooth Lerp between current execution and desired template coordinates
-                // Adds structural explosion displacement offsets when gesture state modifies explosionFactor
-                let targetX = targetPositions[pIdx] * globalScale + (targetPositions[pIdx] * explosionFactor);
-                let targetY = targetPositions[pIdx + 1] * globalScale + (targetPositions[pIdx + 1] * explosionFactor);
-                let targetZ = targetPositions[pIdx + 2] * globalScale + (targetPositions[pIdx + 2] * explosionFactor);
-
-                positions[pIdx] += (targetX - positions[pIdx]) * 0.08;
-                positions[pIdx + 1] += (targetY - positions[pIdx + 1]) * 0.08;
-                positions[pIdx + 2] += (targetZ - positions[pIdx + 2]) * 0.08;
-
-                // Dynamic Hue updates derived from hand positional shifts
-                if (colorHueOffset > 0.01) {
-                    let currentVertexColor = new THREE.Color(colors[pIdx], colors[pIdx+1], colors[pIdx+2]);
-                    let hsl = {};
-                    currentVertexColor.getHSL(hsl);
-                    hsl.h = (hsl.h + colorHueOffset) % 1.0;
-                    currentVertexColor.setHSL(hsl.h, hsl.s, hsl.l);
-                    colors[pIdx] = currentVertexColor.r;
-                    colors[pIdx+1] = currentVertexColor.g;
-                    colors[pIdx+2] = currentVertexColor.b;
-                }
-
-                pIdx += 3;
-            }
-
-            particleGeometry.attributes.position.needsUpdate = true;
-            if(colorHueOffset > 0.01) {
-                particleGeometry.attributes.color.needsUpdate = true;
-            }
-
-            renderer.render(scene, camera);
-        }
-
-        // --- 4. Hand Gesture Recognition Logic ---
+        // --- Gesture Controller Router ---
         function handleHandTracking(results) {
-            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-                return;
-            }
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
 
-            // Target Primary Hand
             const landmarks = results.multiHandLandmarks[0];
 
-            // 1. Pinch Detection for Scale Size (Thumb Tip [4] to Index Tip [8])
-            const thumbTip = landmarks[4];
-            const indexTip = landmarks[8];
-            const pinchDist = Math.sqrt(
-                Math.pow(thumbTip.x - indexTip.x, 2) +
-                Math.pow(thumbTip.y - indexTip.y, 2) +
-                Math.pow(thumbTip.z - indexTip.z, 2)
-            );
-            // Map typical pinch space metrics safely to structural scales
-            globalScale = THREE.MathUtils.mapLinear(pinchDist, 0.03, 0.3, 0.4, 2.2);
+            // Size Modifier (Pinch tracker)
+            const tTip = landmarks[4]; const iTip = landmarks[8];
+            const pinchDist = Math.sqrt(Math.pow(tTip.x-iTip.x,2)+Math.pow(tTip.y-iTip.y,2));
+            targetScale = THREE.MathUtils.mapLinear(pinchDist, 0.04, 0.28, 0.3, 2.5);
 
-            // 2. Openness tracking for Explosion Dynamics (Wrist [0] to middle finger tip [12])
-            const wrist = landmarks[0];
-            const middleTip = landmarks[12];
-            const handExtension = Math.sqrt(
-                Math.pow(wrist.x - middleTip.x, 2) +
-                Math.pow(wrist.y - middleTip.y, 2)
-            );
-            // If the hand is wide open, activate explosion transformation matrix attributes
-            explosionFactor = handExtension > 0.45 ? (handExtension - 0.45) * 3.5 : 0;
+            // Color Spectrum Modifier (Wrist tilt tracking)
+            const mKnuckle = landmarks[5]; const pKnuckle = landmarks[17];
+            const angle = Math.atan2(pKnuckle.y - mKnuckle.y, pKnuckle.x - mKnuckle.x);
+            targetHue = angle * 2.0; 
 
-            // 3. System Color shift mapped from horizontal Hand Position coordinates
-            colorHueOffset = Math.abs(landmarks[9].x - 0.5) * 0.02; 
-
-            // 4. Finger Counting Matrix to change templates
+            // Remapped Finger Counting Pipeline Router
             const fingersUp = countFingers(landmarks);
-            
-            if (fingersUp === 1 && currentTemplateIndex !== 0) generateShape(0);
-            else if (fingersUp === 2 && currentTemplateIndex !== 1) generateShape(1);
-            else if (fingersUp === 3 && currentTemplateIndex !== 2) generateShape(2);
-            else if (fingersUp === 5 && currentTemplateIndex !== 3) generateShape(3);
+            if (fingersUp === 0 || fingersUp === 1) triggerMorph(0); // Fist/1 -> Heart
+            else if (fingersUp === 2) triggerMorph(1);               // 2 -> Saturn
+            else if (fingersUp === 3) triggerMorph(2);               // 3 -> Galaxy
+            else if (fingersUp === 4) triggerMorph(3);               // 4 -> Wormhole
+            else if (fingersUp === 5) triggerMorph(4);               // 5 -> Fireworks
         }
 
         function countFingers(hl) {
-            // Evaluates finger tips positions relative to their knuckles joints
-            const tips = [8, 12, 16, 20];
-            const pips = [6, 10, 14, 18];
+            const tips = [8, 12, 16, 20]; const pips = [6, 10, 14, 18];
             let count = 0;
-
-            for(let i = 0; i < 4; i++) {
-                if(hl[tips[i]].y < hl[pips[i]].y) count++; // MediaPipe Y descends upward inside browsers
-            }
-            
-            // Thumb open validation logic
-            if(Math.abs(hl[4].x - hl[2].x) > 0.06) count++;
-
+            for(let i=0; i<4; i++) { if(hl[tips[i]].y < hl[pips[i]].y) count++; }
+            if(Math.abs(hl[4].x - hl[2].x) > 0.055) count++;
             return count;
         }
 
-        // --- 5. MediaPipe Framework Pipeline Execution ---
+        // Initialize Systems
         initThree();
         animate();
 
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.6
-        });
-
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.55, minTrackingConfidence: 0.55 });
         hands.onResults(handleHandTracking);
 
         const cameraFeed = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({ image: videoElement });
-            },
-            width: 640,
-            height: 480
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 320,
+            height: 240
         });
-        
-        cameraFeed.start().catch(err => {
-            console.error("Webcam hardware execution failed: ", err);
-            alert("Unable to access webcam. The particle system will run in idle mode.");
-        });
-
+        cameraFeed.start().catch(err => console.log("Webcam offline or initialization failed."));
     </script>
 </body>
 </html>
