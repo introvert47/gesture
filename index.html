@@ -3,206 +3,411 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Space Matrix v2 - Debug Version</title>
+    <title>Interactive Gesture Particle System</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #020208; font-family: 'Courier New', Courier, monospace; }
-        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        #webcam { position: absolute; bottom: 30px; right: 30px; width: 320px; height: 240px; transform: scaleX(-1); border: 2px solid #00ffcc; border-radius: 12px; box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); z-index: 10; background: #111; }
-        #ui-overlay { position: absolute; top: 30px; left: 30px; color: #fff; z-index: 10; pointer-events: none; }
-        h1 { margin: 0 0 5px 0; font-size: 1.8rem; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.5); }
-        p { margin: 0 0 20px 0; font-size: 0.85rem; color: #8899a6; }
-        .instructions { background: rgba(5, 5, 20, 0.75); padding: 20px; border-radius: 10px; border: 1px solid #00ffcc; max-width: 400px; }
-        .gesture-item { margin-bottom: 10px; font-size: 0.85rem; color: #e2e8f0; }
-        .gesture-item b { color: #00ffcc; }
-        .active-template { color: #ff00ff !important; font-weight: bold; text-shadow: 0 0 8px #ff00ff; }
-        #fallback-notice { color: #ff3366; font-weight: bold; margin-top: 10px; display: none; }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Hidden webcam video element needed for MediaPipe */
+        #webcam {
+            display: none;
+        }
+        /* UI Overlay */
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+        h1 { margin: 0 0 5px 0; font-size: 1.5rem; letter-spacing: 2px; text-transform: uppercase; color: #00ffcc; }
+        .instruction { font-size: 0.9rem; margin: 3px 0; opacity: 0.8; }
+        .status { font-weight: bold; color: #ff0077; }
+        
+        /* Debug Mini-Video View */
+        #debug-video {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid #00ffcc;
+            border-radius: 8px;
+            transform: scaleX(-1); /* Mirror view */
+            background: #111;
+            z-index: 10;
+        }
     </style>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
-    <div id="canvas-container"></div>
-    <video id="webcam" autoplay playsinline></video>
-
     <div id="ui-overlay">
-        <h1>QUANTUM SPACE MATRIX</h1>
-        <p>System status: Active</p>
-        <div class="instructions">
-            <div class="gesture-item">✊/☝️ <b>0-1 Fingers (or Press Key 1):</b> <span id="t0" class="active-template">Cosmic Heart</span></div>
-            <div class="gesture-item">✌️ <b>2 Fingers (or Press Key 2):</b> <span id="t1">Saturn Rings</span></div>
-            <div class="gesture-item">🤟 <b>3 Fingers (or Press Key 3):</b> <span id="t2">Spiral Galaxy</span></div>
-            <div class="gesture-item">🖖 <b>4 Fingers (or Press Key 4):</b> <span id="t3">Wormhole Tunnel</span></div>
-            <div class="gesture-item">✋ <b>5 Fingers (or Press Key 5):</b> <span id="t4">Big Bang Fireworks</span></div>
-            <div id="fallback-notice">⚠️ WEBCAM OFFLINE: Using Keyboard (1-5) & Mouse Move Controls!</div>
-        </div>
+        <h1>Gesture Particle Matrix</h1>
+        <div class="instruction">Status: <span id="status-val" class="status">Initializing Camera & AI...</span></div>
+        <div class="instruction">➔ <strong style="color: #00ffcc;">Pinch Index & Thumb:</strong> Control Particle Size/Expansion</div>
+        <div class="instruction">➔ <strong style="color: #ffff00;">Hand Rotation/Tilt:</strong> Rotate System & Shift Colors</div>
+        <div class="instruction">➔ <strong style="color: #ff00ff;">Fingers Extended:</strong> Change Morph Templates</div>
+        <div id="current-template" class="instruction" style="margin-top: 15px; font-size: 1.1rem;">Template: <b>Loading...</b></div>
     </div>
 
-    <script id="vertexShader" type="x-shader/x-vertex">
-        uniform float uMix; uniform float uScale; uniform float uHueShift; uniform float uTime;
-        attribute vec3 aTarget; attribute vec3 aColorTarget;
-        varying vec3 vColor;
-        vec3 hueShift(vec3 color, float angle) {
-            vec3 k = vec3(0.57735, 0.57735, 0.57735); float cosAngle = cos(angle);
-            return color * cosAngle + cross(k, color) * sin(angle) + k * dot(k, color) * (1.0 - cosAngle);
-        }
-        void main() {
-            vec3 mixedPosition = mix(position, aTarget, uMix) * uScale;
-            mixedPosition.x += sin(uTime * 1.5 + mixedPosition.z * 0.1) * 0.08;
-            mixedPosition.y += cos(uTime * 1.2 + mixedPosition.x * 0.1) * 0.08;
-            vec4 mvPosition = modelViewMatrix * vec4(mixedPosition, 1.0);
-            gl_Position = projectionMatrix * mvPosition;
-            gl_PointSize = (7.5 / -mvPosition.z) * (2.0 + sin(uTime + mixedPosition.x * 0.05) * 0.4);
-            vColor = hueShift(mix(color, aColorTarget, uMix), uHueShift);
-        }
-    </script>
-
-    <script id="fragmentShader" type="x-shader/x-fragment">
-        varying vec3 vColor;
-        void main() {
-            float dist = distance(gl_PointCoord, vec2(0.5, 0.5));
-            if (dist > 0.5) discard;
-            gl_FragColor = vec4(vColor, (1.0 - (dist * 2.0)) * 0.85);
-        }
-    </script>
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="debug-video"></canvas>
+    <div id="canvas-container"></div>
 
     <script>
-        const PARTICLE_COUNT = 20000;
-        let scene, camera, renderer, shaderMaterial, particleGeometry, particleSystem;
-        let currentPositions = new Float32Array(PARTICLE_COUNT * 3), currentColors = new Float32Array(PARTICLE_COUNT * 3);
-        let targetPositions = new Float32Array(PARTICLE_COUNT * 3), targetColors = new Float32Array(PARTICLE_COUNT * 3);
-        let currentTemplateIndex = 0, transitionProgress = 1.0;
-        let targetScale = 1.0, targetHue = 0.0, currentScale = 1.0, currentHue = 0.0;
-        const clock = new THREE.Clock();
+        // --- CONFIG & CONSTANTS ---
+        const PARTICLE_COUNT = 15000;
+        let scene, camera, renderer, particleGeometry, particleMaterial, particleSystem;
+        let positions, colors, targetPositions, targetColors;
+        
+        // Interaction States
+        let currentMode = 'wormhole'; // Default template
+        let pinchDistance = 0;
+        let handX = 0, handY = 0, handRoll = 0;
+        let morphProgress = 1.0; 
+        const morphSpeed = 0.05;
 
+        // HTML Elements
+        const videoElement = document.getElementById('webcam');
+        const debugCanvas = document.getElementById('debug-video');
+        const debugCtx = debugCanvas.getContext('2d');
+        const statusVal = document.getElementById('status-val');
+        const templateVal = document.getElementById('current-template');
+
+        // --- MAIN INITIALIZATION ---
+        initThree();
+        initParticles();
+        initHandTracking();
+        animate();
+
+        // --- THREE.JS SETUP ---
         function initThree() {
-            scene = new THREE.Scene(); scene.background = new THREE.Color(0x020208);
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.015);
+
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 0, 45);
-            renderer = new THREE.WebGLRenderer({ antialias: false });
+            camera.position.z = 40;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
 
-            generateShapeData(0, currentPositions, currentColors);
-            targetPositions.set(currentPositions); targetColors.set(currentColors);
-
-            particleGeometry = new THREE.BufferGeometry();
-            particleGeometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
-            particleGeometry.setAttribute('color', new THREE.BufferAttribute(currentColors, 3));
-            particleGeometry.setAttribute('aTarget', new THREE.BufferAttribute(targetPositions, 3));
-            particleGeometry.setAttribute('aColorTarget', new THREE.BufferAttribute(targetColors, 3));
-
-            shaderMaterial = new THREE.ShaderMaterial({
-                vertexShader: document.getElementById('vertexShader').textContent,
-                fragmentShader: document.getElementById('fragmentShader').textContent,
-                uniforms: { uMix: { value: 1.0 }, uScale: { value: 1.0 }, uHueShift: { value: 0.0 }, uTime: { value: 0.0 } },
-                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
-            });
-
-            particleSystem = new THREE.Points(particleGeometry, shaderMaterial);
-            scene.add(particleSystem);
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
+            window.addEventListener('resize', onWindowResize);
         }
 
-        function generateShapeData(type, posArr, colArr) {
-            let pIdx = 0; const c = new THREE.Color();
+        // --- PARTICLE CORE ENGINE ---
+        function initParticles() {
+            particleGeometry = new THREE.BufferGeometry();
+            
+            positions = new Float32Array(PARTICLE_COUNT * 3);
+            colors = new Float32Array(PARTICLE_COUNT * 3);
+            targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+            targetColors = new Float32Array(PARTICLE_COUNT * 3);
+
+            // Create a soft glowing circular particle texture procedurally
+            const pCanvas = document.createElement('canvas');
+            pCanvas.width = 16;
+            pCanvas.height = 16;
+            const pCtx = pCanvas.getContext('2d');
+            const gradient = pCtx.createRadialGradient(8, 8, 0, 8, 8, 8);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            pCtx.fillStyle = gradient;
+            pCtx.fillRect(0, 0, 16, 16);
+            const texture = new THREE.CanvasTexture(pCanvas);
+
+            particleMaterial = new THREE.PointsMaterial({
+                size: 0.3,
+                map: texture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true
+            });
+
+            // Initialize shapes and assign defaults
+            generateShape('wormhole', targetPositions, targetColors);
+            // Snap current positions to initial target instantly
+            for(let i=0; i<PARTICLE_COUNT*3; i++) {
+                positions[i] = targetPositions[i];
+                colors[i] = targetColors[i];
+            }
+
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(particleSystem);
+            
+            updateTemplateUI();
+        }
+
+        // --- MATH SHAPE GENERATORS (TEMPLATES) ---
+        function generateShape(type, posArray, colArray) {
+            const colorObj = new THREE.Color();
+            
             for (let i = 0; i < PARTICLE_COUNT; i++) {
-                let x = 0, y = 0, z = 0;
-                if (type === 0) {
-                    let t = Math.PI * 2 * (i / PARTICLE_COUNT) * 120;
-                    x = 16 * Math.pow(Math.sin(t), 3) * 0.7; y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.7;
-                    c.setHSL(0.95 + (Math.random()*0.05), 0.85, 0.55);
-                } else if (type === 1) {
-                    if (i < PARTICLE_COUNT * 0.35) {
-                        let u = Math.random(), v = Math.random(), tSat = u * 2.0 * Math.PI, pSat = Math.acos(2.0 * v - 1.0), rad = 5.5 + Math.random() * 0.5;
-                        x = rad * Math.sin(pSat) * Math.cos(tSat); y = rad * Math.sin(pSat) * Math.sin(tSat) * 0.8; z = rad * Math.cos(pSat);
-                        c.setHSL(0.08, 0.8, 0.5);
+                const i3 = i * 3;
+                
+                if (type === 'heart') {
+                    // 3D Heart Equation
+                    const t = Math.PI * 2 * (i / PARTICLE_COUNT) * (10 + i % 5);
+                    const phi = Math.acos((Math.random() * 2) - 1);
+                    
+                    // Base parametric flat heart
+                    const x = 16 * Math.pow(Math.sin(t), 3);
+                    const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                    const z = (Math.random() - 0.5) * 8; // Extrude into 3D
+                    
+                    posArray[i3] = x * 0.8;
+                    posArray[i3+1] = y * 0.8;
+                    posArray[i3+2] = z;
+
+                    // Deep pinks and reds
+                    colorObj.setHSL(0.9 + Math.random() * 0.08, 1.0, 0.4 + Math.random() * 0.3);
+
+                } else if (type === 'wormhole') {
+                    // Structured cylindrical funnel vortex
+                    const percent = i / PARTICLE_COUNT;
+                    const angle = percent * Math.PI * 2 * 40; // Spiral wraps
+                    const z = (percent - 0.5) * 60; // Length
+                    const radius = 2 + Math.pow(percent, 3) * 15; // Flaring funnel radius
+
+                    posArray[i3] = Math.cos(angle) * radius;
+                    posArray[i3+1] = Math.sin(angle) * radius;
+                    posArray[i3+2] = z;
+
+                    // Neon cyan-blue cosmic color profiles
+                    colorObj.setHSL(0.5 + percent * 0.15, 1.0, 0.5);
+
+                } else if (type === 'solarsystem') {
+                    // Divide array into 1 Central Sun and 8 Orbital Rings
+                    const segment = i % 9;
+                    if (segment === 0) {
+                        // The Sun (Dense core sphere)
+                        const u = Math.random();
+                        const v = Math.random();
+                        const theta = u * 2.0 * Math.PI;
+                        const phi = Math.acos(2.0 * v - 1.0);
+                        const r = Math.random() * 3.5;
+                        posArray[i3] = r * Math.sin(phi) * Math.cos(theta);
+                        posArray[i3+1] = r * Math.sin(phi) * Math.sin(theta);
+                        posArray[i3+2] = r * Math.cos(phi);
+                        colorObj.setHex(0xffaa00); // Solar Orange
                     } else {
-                        let ringRad = 8.5 + Math.random() * 11.0, ringT = Math.random() * Math.PI * 2;
-                        x = ringRad * Math.cos(ringT); z = ringRad * Math.sin(ringT);
-                        c.setHSL(0.14, 0.65, 0.45);
+                        // Planets orbiting at distinct radii
+                        const radius = segment * 4.2 + 2;
+                        const angle = Math.random() * Math.PI * 2;
+                        // Minor vertical variance to simulate rings/thickness
+                        posArray[i3] = Math.cos(angle) * radius;
+                        posArray[i3+1] = (Math.random() - 0.5) * 0.5; 
+                        posArray[i3+2] = Math.sin(angle) * radius;
+
+                        // Give distinct unique planet colors
+                        const planetColors = [0x999999, 0xe3bb76, 0x2277ff, 0xcc4400, 0xd4a373, 0xe0b034, 0x4cc9f0, 0x3a0ca3];
+                        colorObj.setHex(planetColors[segment - 1]);
                     }
-                } else if (type === 2) {
-                    let arm = i % 2 === 0 ? 0.0 : Math.PI, galDist = Math.pow(Math.random(), 1.4) * 22, galTheta = galDist * 0.55 + arm + (Math.random() - 0.5) * 0.25;
-                    x = galDist * Math.cos(galTheta); y = (Math.random() - 0.5) * (3.0 - galDist * 0.12); z = galDist * Math.sin(galTheta);
-                    c.setHSL(0.58 + (galDist * 0.012), 0.9, 0.5 + (1.0 - galDist/22)*0.3);
-                } else if (type === 3) {
-                    let percent = (i / PARTICLE_COUNT), wZ = (percent - 0.5) * 40, wTheta = percent * Math.PI * 160, wRadius = 4.0 + Math.pow(Math.abs(percent - 0.5), 2.0) * 25.0;
-                    x = wRadius * Math.cos(wTheta); y = wRadius * Math.sin(wTheta); z = wZ;
-                    c.setHSL(0.70 + (percent * 0.15), 0.95, 0.45 + (1.0 - Math.abs(percent - 0.5)*2.0)*0.3);
-                } else if (type === 4) {
-                    let uF = Math.random(), vF = Math.random(), tF = uF * 2.0 * Math.PI, pF = Math.acos(2.0 * vF - 1.0), vel = 12 + Math.random() * 15;
-                    x = vel * Math.sin(pF) * Math.cos(tF); y = vel * Math.sin(pF) * Math.sin(tF); z = vel * Math.cos(pF);
-                    c.setHSL(Math.random(), 0.9, 0.6);
+
+                } else if (type === 'fireworks') {
+                    // Multi-headed explosive shell bursts
+                    const shell = i % 5; 
+                    const angle1 = Math.random() * Math.PI * 2;
+                    const angle2 = Math.acos((Math.random() * 2) - 1);
+                    const speed = 5 + Math.random() * 15; // Represents particle distance from core
+                    
+                    // Deterministic centers per shell
+                    const centers = [
+                        [-15, 10, 0], [15, 8, -5], [0, -10, 5], [-8, -5, -10], [10, -12, 8]
+                    ];
+                    
+                    posArray[i3] = centers[shell][0] + speed * Math.sin(angle2) * Math.cos(angle1);
+                    posArray[i3+1] = centers[shell][1] + speed * Math.sin(angle2) * Math.sin(angle1);
+                    posArray[i3+2] = centers[shell][2] + speed * Math.cos(angle2);
+
+                    const shellColors = [0xff0055, 0x00ffcc, 0xffff00, 0xff00ff, 0x00ff00];
+                    colorObj.setHex(shellColors[shell]);
                 }
-                posArr[pIdx] = x; posArr[pIdx+1] = y; posArr[pIdx+2] = z; colArr[pIdx] = c.r; colArr[pIdx+1] = c.g; colArr[pIdx+2] = c.b; pIdx += 3;
+
+                colArray[i3] = colorObj.r;
+                colArray[i3+1] = colorObj.g;
+                colArray[i3+2] = colorObj.b;
             }
         }
 
-        function triggerMorph(targetIndex) {
-            if (targetIndex === currentTemplateIndex) return;
-            if(transitionProgress < 1.0) {
-                let mixVal = shaderMaterial.uniforms.uMix.value;
-                for(let i=0; i<PARTICLE_COUNT*3; i++){
-                    currentPositions[i] += (targetPositions[i] - currentPositions[i]) * mixVal;
-                    currentColors[i] += (targetColors[i] - currentColors[i]) * mixVal;
-                }
-            } else { currentPositions.set(targetPositions); currentColors.set(targetColors); }
-            particleGeometry.attributes.position.copyArray(currentPositions); particleGeometry.attributes.position.needsUpdate = true;
-            particleGeometry.attributes.color.copyArray(currentColors); particleGeometry.attributes.color.needsUpdate = true;
-            generateShapeData(targetIndex, targetPositions, targetColors);
-            particleGeometry.attributes.aTarget.copyArray(targetPositions); particleGeometry.attributes.aTarget.needsUpdate = true;
-            particleGeometry.attributes.aColorTarget.copyArray(targetColors); particleGeometry.attributes.aColorTarget.needsUpdate = true;
-            currentTemplateIndex = targetIndex; transitionProgress = 0.0;
-            for(let i=0; i<=4; i++) { document.getElementById(`t${i}`).className = (i === targetIndex) ? 'active-template' : ''; }
+        // Trigger morph matrix smoothly
+        function triggerMorph(newMode) {
+            if(currentMode === newMode) return;
+            currentMode = newMode;
+            morphProgress = 0.0; // Reset interpolation ticker
+            generateShape(currentMode, targetPositions, targetColors);
+            updateTemplateUI();
         }
 
+        function updateTemplateUI() {
+            templateVal.innerHTML = `Template: <b style="color:#00ffcc; text-transform:uppercase;">${currentMode}</b>`;
+        }
+
+        // --- MEDIAPIPIE AI HAND TRACKING ENGINE ---
+        function initHandTracking() {
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            hands.onResults(onHandResults);
+
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 320,
+                height: 240
+            });
+            
+            cameraUtils.start()
+                .then(() => { statusVal.innerText = "Active. Show hand!"; statusVal.style.color = "#00ffcc"; })
+                .catch(err => { statusVal.innerText = "Camera Error"; console.error(err); });
+        }
+
+        function onHandResults(results) {
+            // Render basic landmarks overlay on the visual debug widget
+            debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+            if (results.image) {
+                debugCtx.drawImage(results.image, 0, 0, debugCanvas.width, debugCanvas.height);
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                statusVal.innerText = "Tracking Hand...";
+                statusVal.style.color = "#00ffcc";
+
+                // Draw Landmark Joints dynamically on Debug widget
+                debugCtx.fillStyle = '#ff0077';
+                for(let pt of landmarks) {
+                    debugCtx.fillRect(pt.x * debugCanvas.width, pt.y * debugCanvas.height, 4, 4);
+                }
+
+                // 1. PINCH DETECTION (Thumb tip to Index tip distance)
+                const thumbTip = landmarks[4];
+                const indexTip = landmarks[8];
+                const dx = thumbTip.x - indexTip.x;
+                const dy = thumbTip.y - indexTip.y;
+                const dz = thumbTip.z - indexTip.z;
+                pinchDistance = Math.sqrt(dx*dx + dy*dy + dz*dz); // Scale values generally sit between 0.02 and 0.3
+
+                // 2. POSITION TRANSLATION (Map center palm [0] to system space translation)
+                const wrist = landmarks[0];
+                handX = (wrist.x - 0.5) * -50; // Inverted mapping for mirrored layout
+                handY = (wrist.y - 0.5) * -40;
+
+                // 3. HAND ROTATION / ROLL TILT MATRIX
+                const indexMc = landmarks[5];
+                const pinkyMc = landmarks[17];
+                handRoll = Math.atan2(pinkyMc.y - indexMc.y, pinkyMc.x - indexMc.x);
+
+                // 4. GESTURE TEMPLATE SWITCHER (Count extended fingers)
+                // Evaluate finger extensions relative to base knuckle joints
+                const isIndexExtended = landmarks[8].y < landmarks[6].y;
+                const isMiddleExtended = landmarks[12].y < landmarks[10].y;
+                const isRingExtended = landmarks[16].y < landmarks[14].y;
+                const isPinkyExtended = landmarks[20].y < landmarks[18].y;
+
+                let extendedCount = 0;
+                if(isIndexExtended) extendedCount++;
+                if(isMiddleExtended) extendedCount++;
+                if(isRingExtended) extendedCount++;
+                if(isPinkyExtended) extendedCount++;
+
+                // Map absolute counted fingers directly to discrete templates
+                if (extendedCount === 1) triggerMorph('heart');
+                else if (extendedCount === 2) triggerMorph('wormhole');
+                else if (extendedCount === 3) triggerMorph('solarsystem');
+                else if (extendedCount === 4) triggerMorph('fireworks');
+
+            } else {
+                statusVal.innerText = "Hand Out Of View";
+                statusVal.style.color = "#ff0077";
+            }
+        }
+
+        // --- WINDOW RESIZE HANDLER ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- LOOP AND RENDER TICKER ---
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta(), elapsed = clock.getElapsedTime();
-            if (transitionProgress < 1.0) { transitionProgress = Math.min(1.0, transitionProgress + delta * 1.4); shaderMaterial.uniforms.uMix.value = transitionProgress; }
-            currentScale += (targetScale - currentScale) * 0.12; currentHue += (targetHue - currentHue) * 0.12;
-            shaderMaterial.uniforms.uScale.value = currentScale; shaderMaterial.uniforms.uHueShift.value = currentHue; shaderMaterial.uniforms.uTime.value = elapsed;
-            particleSystem.rotation.y = elapsed * 0.05; particleSystem.rotation.x = elapsed * 0.02;
+
+            const posAttr = particleGeometry.attributes.position;
+            const colAttr = particleGeometry.attributes.color;
+
+            // Handle morph interpolations incrementally across lifecycle tickers
+            if (morphProgress < 1.0) {
+                morphProgress += morphSpeed;
+                if(morphProgress > 1.0) morphProgress = 1.0;
+            }
+
+            // Map pinch size thresholds seamlessly to particle sizing metrics
+            // Normalized range baseline map logic
+            let TargetSize = 0.15 + (pinchDistance * 2.5);
+            particleMaterial.size = THREE.MathUtils.lerp(particleMaterial.size, TargetSize, 0.1);
+
+            // Process geometry updates point by point
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const i3 = i * 3;
+
+                // Linear Interpolation (LERP) from present states toward target layouts
+                positions[i3]   = THREE.MathUtils.lerp(positions[i3],   targetPositions[i3],   morphSpeed);
+                positions[i3+1] = THREE.MathUtils.lerp(positions[i3+1], targetPositions[i3+1], morphSpeed);
+                positions[i3+2] = THREE.MathUtils.lerp(positions[i3+2], targetPositions[i3+2], morphSpeed);
+
+                // Dynamically shift hue colors slightly based on your hand's physical rotation/roll angle
+                colors[i3]     = THREE.MathUtils.lerp(colors[i3],     targetColors[i3] * (1.0 + Math.sin(handRoll)*0.2),   morphSpeed);
+                colors[i3+1]   = THREE.MathUtils.lerp(colors[i3+1],   targetColors[i3+1] * (1.0 + Math.cos(handRoll)*0.2), morphSpeed);
+                colors[i3+2]   = THREE.MathUtils.lerp(colors[i3+2],   targetColors[i3+2],                                  morphSpeed);
+            }
+
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+
+            // Apply global kinetic transforms matching hand positional tracks
+            if(particleSystem) {
+                // Smooth damping easing functions applied to motion physics loops
+                particleSystem.position.x = THREE.MathUtils.lerp(particleSystem.position.x, handX, 0.05);
+                particleSystem.position.y = THREE.MathUtils.lerp(particleSystem.position.y, handY, 0.05);
+                
+                // Continuous slow rotation overlayed with active hand angle controls
+                particleSystem.rotation.y += 0.005;
+                particleSystem.rotation.z = THREE.MathUtils.lerp(particleSystem.rotation.z, handRoll, 0.05);
+            }
+
             renderer.render(scene, camera);
         }
-
-        initThree(); animate();
-
-        // Setup MediaPipe
-        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.55, minTrackingConfidence: 0.55 });
-        hands.onResults((results) => {
-            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
-            const hl = results.multiHandLandmarks[0];
-            targetScale = THREE.MathUtils.mapLinear(Math.sqrt(Math.pow(hl[4].x-hl[8].x,2)+Math.pow(hl[4].y-hl[8].y,2)), 0.04, 0.28, 0.3, 2.5);
-            targetHue = Math.atan2(hl[17].y - hl[5].y, hl[17].x - hl[5].x) * 2.0;
-            let count = 0;
-            for(let i=0; i<4; i++) { if(hl[[8,12,16,20][i]].y < hl[[6,10,14,18][i]].y) count++; }
-            if(Math.abs(hl[4].x - hl[2].x) > 0.055) count++;
-            if (count <= 1) triggerMorph(0); else if (count === 2) triggerMorph(1); else if (count === 3) triggerMorph(2); else if (count === 4) triggerMorph(3); else if (count === 5) triggerMorph(4);
-        });
-
-        const cameraFeed = new Camera(document.getElementById('webcam'), {
-            onFrame: async () => { await hands.send({ image: document.getElementById('webcam') }); }, width: 320, height: 240
-        });
-        
-        cameraFeed.start().catch(() => {
-            document.getElementById('fallback-notice').style.display = 'block';
-            // Backup controls if camera is denied
-            window.addEventListener('mousemove', (e) => {
-                targetScale = (e.clientX / window.innerWidth) * 2.0 + 0.5;
-                targetHue = (e.clientY / window.innerHeight) * Math.PI;
-            });
-            window.addEventListener('keydown', (e) => {
-                if(e.key >= 1 && e.key <= 5) triggerMorph(parseInt(e.key) - 1);
-            });
-        });
     </script>
 </body>
 </html>
