@@ -3,58 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Space Matrix v2</title>
+    <title>Quantum Space Matrix v2 - Debug Version</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #020208;
-            font-family: 'Courier New', Courier, monospace;
-        }
-        #canvas-container {
-            width: 100vw;
-            height: 100vh;
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 1;
-        }
-        #webcam {
-            position: absolute;
-            bottom: 30px;
-            right: 30px;
-            width: 320px;
-            height: 240px;
-            transform: scaleX(-1);
-            border: 2px solid #00ffcc;
-            border-radius: 12px;
-            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
-            z-index: 10;
-            background: #000;
-        }
-        #ui-overlay {
-            position: absolute;
-            top: 30px;
-            left: 30px;
-            color: #fff;
-            z-index: 10;
-            pointer-events: none;
-        }
+        body { margin: 0; overflow: hidden; background-color: #020208; font-family: 'Courier New', Courier, monospace; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #webcam { position: absolute; bottom: 30px; right: 30px; width: 320px; height: 240px; transform: scaleX(-1); border: 2px solid #00ffcc; border-radius: 12px; box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); z-index: 10; background: #111; }
+        #ui-overlay { position: absolute; top: 30px; left: 30px; color: #fff; z-index: 10; pointer-events: none; }
         h1 { margin: 0 0 5px 0; font-size: 1.8rem; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.5); }
         p { margin: 0 0 20px 0; font-size: 0.85rem; color: #8899a6; }
-        .instructions {
-            background: rgba(5, 5, 20, 0.75);
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #00ffcc;
-            box-shadow: inset 0 0 15px rgba(0, 255, 204, 0.1);
-            max-width: 400px;
-        }
+        .instructions { background: rgba(5, 5, 20, 0.75); padding: 20px; border-radius: 10px; border: 1px solid #00ffcc; max-width: 400px; }
         .gesture-item { margin-bottom: 10px; font-size: 0.85rem; color: #e2e8f0; }
         .gesture-item b { color: #00ffcc; }
         .active-template { color: #ff00ff !important; font-weight: bold; text-shadow: 0 0 8px #ff00ff; }
+        #fallback-notice { color: #ff3366; font-weight: bold; margin-top: 10px; display: none; }
     </style>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -66,51 +28,33 @@
 
     <div id="ui-overlay">
         <h1>QUANTUM SPACE MATRIX</h1>
-        <p>System status: Router Remapped // GPU Accelerated</p>
+        <p>System status: Active</p>
         <div class="instructions">
-            <div class="gesture-item">✊/☝️ <b>0 or 1 Finger:</b> <span id="t0" class="active-template">Cosmic Heart</span></div>
-            <div class="gesture-item">✌️ <b>2 Fingers Up:</b> <span id="t1">Saturn Rings</span></div>
-            <div class="gesture-item">🤟 <b>3 Fingers Up:</b> <span id="t2">Spiral Galaxy</span></div>
-            <div class="gesture-item">🖖 <b>4 Fingers Up:</b> <span id="t3">Wormhole Tunnel</span></div>
-            <div class="gesture-item">✋ <b>5 Fingers Up:</b> <span id="t4">Big Bang Fireworks</span></div>
-            <hr style="border: 0; border-top: 1px dashed #00ffcc; margin: 12px 0;">
-            <div class="gesture-item">↔️ <b>Pinch Width:</b> Scale Space Continuum</div>
-            <div class="gesture-item">🔄 <b>Hand Tilt Angle:</b> Shift Matrix Spectrum</div>
+            <div class="gesture-item">✊/☝️ <b>0-1 Fingers (or Press Key 1):</b> <span id="t0" class="active-template">Cosmic Heart</span></div>
+            <div class="gesture-item">✌️ <b>2 Fingers (or Press Key 2):</b> <span id="t1">Saturn Rings</span></div>
+            <div class="gesture-item">🤟 <b>3 Fingers (or Press Key 3):</b> <span id="t2">Spiral Galaxy</span></div>
+            <div class="gesture-item">🖖 <b>4 Fingers (or Press Key 4):</b> <span id="t3">Wormhole Tunnel</span></div>
+            <div class="gesture-item">✋ <b>5 Fingers (or Press Key 5):</b> <span id="t4">Big Bang Fireworks</span></div>
+            <div id="fallback-notice">⚠️ WEBCAM OFFLINE: Using Keyboard (1-5) & Mouse Move Controls!</div>
         </div>
     </div>
 
     <script id="vertexShader" type="x-shader/x-vertex">
-        uniform float uMix;
-        uniform float uScale;
-        uniform float uHueShift;
-        uniform float uTime;
-        
-        attribute vec3 aTarget;
-        attribute vec3 aColorTarget;
-        
+        uniform float uMix; uniform float uScale; uniform float uHueShift; uniform float uTime;
+        attribute vec3 aTarget; attribute vec3 aColorTarget;
         varying vec3 vColor;
-        
         vec3 hueShift(vec3 color, float angle) {
-            vec3 k = vec3(0.57735, 0.57735, 0.57735);
-            float cosAngle = cos(angle);
+            vec3 k = vec3(0.57735, 0.57735, 0.57735); float cosAngle = cos(angle);
             return color * cosAngle + cross(k, color) * sin(angle) + k * dot(k, color) * (1.0 - cosAngle);
         }
-
         void main() {
-            vec3 mixedPosition = mix(position, aTarget, uMix);
-            mixedPosition *= uScale;
-            
-            // Subtle stellar wind breathing effect
+            vec3 mixedPosition = mix(position, aTarget, uMix) * uScale;
             mixedPosition.x += sin(uTime * 1.5 + mixedPosition.z * 0.1) * 0.08;
             mixedPosition.y += cos(uTime * 1.2 + mixedPosition.x * 0.1) * 0.08;
-
             vec4 mvPosition = modelViewMatrix * vec4(mixedPosition, 1.0);
             gl_Position = projectionMatrix * mvPosition;
-            
             gl_PointSize = (7.5 / -mvPosition.z) * (2.0 + sin(uTime + mixedPosition.x * 0.05) * 0.4);
-            
-            vec3 mixedColor = mix(color, aColorTarget, uMix);
-            vColor = hueShift(mixedColor, uHueShift);
+            vColor = hueShift(mix(color, aColorTarget, uMix), uHueShift);
         }
     </script>
 
@@ -119,49 +63,30 @@
         void main() {
             float dist = distance(gl_PointCoord, vec2(0.5, 0.5));
             if (dist > 0.5) discard;
-            float intensity = 1.0 - (dist * 2.0);
-            gl_FragColor = vec4(vColor, intensity * 0.85);
+            gl_FragColor = vec4(vColor, (1.0 - (dist * 2.0)) * 0.85);
         }
     </script>
 
     <script>
-        const PARTICLE_COUNT = 25000;
+        const PARTICLE_COUNT = 20000;
         let scene, camera, renderer, shaderMaterial, particleGeometry, particleSystem;
-        
-        let currentPositions = new Float32Array(PARTICLE_COUNT * 3);
-        let currentColors = new Float32Array(PARTICLE_COUNT * 3);
-        let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
-        let targetColors = new Float32Array(PARTICLE_COUNT * 3);
-
-        let currentTemplateIndex = 0;
-        let transitionProgress = 1.0; 
-        let targetScale = 1.0;
-        let targetHue = 0.0;
-        let currentScale = 1.0;
-        let currentHue = 0.0;
+        let currentPositions = new Float32Array(PARTICLE_COUNT * 3), currentColors = new Float32Array(PARTICLE_COUNT * 3);
+        let targetPositions = new Float32Array(PARTICLE_COUNT * 3), targetColors = new Float32Array(PARTICLE_COUNT * 3);
+        let currentTemplateIndex = 0, transitionProgress = 1.0;
+        let targetScale = 1.0, targetHue = 0.0, currentScale = 1.0, currentHue = 0.0;
         const clock = new THREE.Clock();
 
-        const videoElement = document.getElementById('webcam');
-        const container = document.getElementById('canvas-container');
-
         function initThree() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x020208);
-            scene.fog = new THREE.FogExp2(0x020208, 0.012);
-
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0x020208);
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 0, 45);
-
-            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+            renderer = new THREE.WebGLRenderer({ antialias: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-            container.appendChild(renderer.domElement);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            generateBackgroundStars();
-
-            generateShapeData(0, currentPositions, currentColors); 
-            targetPositions.set(currentPositions);
-            targetColors.set(currentColors);
+            generateShapeData(0, currentPositions, currentColors);
+            targetPositions.set(currentPositions); targetColors.set(currentColors);
 
             particleGeometry = new THREE.BufferGeometry();
             particleGeometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
@@ -172,221 +97,112 @@
             shaderMaterial = new THREE.ShaderMaterial({
                 vertexShader: document.getElementById('vertexShader').textContent,
                 fragmentShader: document.getElementById('fragmentShader').textContent,
-                uniforms: {
-                    uMix: { value: 1.0 },
-                    uScale: { value: 1.0 },
-                    uHueShift: { value: 0.0 },
-                    uTime: { value: 0.0 }
-                },
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
+                uniforms: { uMix: { value: 1.0 }, uScale: { value: 1.0 }, uHueShift: { value: 0.0 }, uTime: { value: 0.0 } },
+                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
             });
 
             particleSystem = new THREE.Points(particleGeometry, shaderMaterial);
             scene.add(particleSystem);
-
-            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
         }
 
-        function generateBackgroundStars() {
-            const starGeo = new THREE.BufferGeometry();
-            const count = 1200;
-            const arr = new Float32Array(count * 3);
-            for(let i=0; i<count*3; i++) { arr[i] = (Math.random() - 0.5) * 250; }
-            starGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-            const starMat = new THREE.PointsMaterial({size: 0.25, color: 0x4455aa, transparent: true, opacity: 0.4});
-            const stars = new THREE.Points(starGeo, starMat);
-            scene.add(stars);
-        }
-
-        // --- Space Matrix Structural Data Engine ---
         function generateShapeData(type, posArr, colArr) {
-            let pIdx = 0;
-            const c = new THREE.Color();
-
+            let pIdx = 0; const c = new THREE.Color();
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 let x = 0, y = 0, z = 0;
-
-                switch (type) {
-                    case 0: // Cosmic Heart (0 or 1 Finger)
-                        let t = Math.PI * 2 * (i / PARTICLE_COUNT) * 150;
-                        x = 16 * Math.pow(Math.sin(t), 3) * 0.7;
-                        y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.7;
-                        z = (Math.random() - 0.5) * 4;
-                        c.setHSL(0.95 + (Math.random()*0.05), 0.85, 0.55);
-                        break;
-
-                    case 1: // Saturn (2 Fingers)
-                        if (i < PARTICLE_COUNT * 0.35) {
-                            let u = Math.random(), v = Math.random();
-                            let tSat = u * 2.0 * Math.PI, pSat = Math.acos(2.0 * v - 1.0);
-                            let rad = 5.5 + Math.random() * 0.5;
-                            x = rad * Math.sin(pSat) * Math.cos(tSat);
-                            y = rad * Math.sin(pSat) * Math.sin(tSat) * 0.8;
-                            z = rad * Math.cos(pSat);
-                            c.setHSL(0.08, 0.8, 0.5);
-                        } else {
-                            let ringRad = 8.5 + Math.random() * 11.0;
-                            let ringT = Math.random() * Math.PI * 2;
-                            x = ringRad * Math.cos(ringT);
-                            y = (Math.random() - 0.5) * 0.3;
-                            z = ringRad * Math.sin(ringT);
-                            c.setHSL(0.14, 0.65, 0.45);
-                        }
-                        break;
-
-                    case 2: // Spiral Galaxy (3 Fingers)
-                        let arm = i % 2 === 0 ? 0.0 : Math.PI;
-                        let galDist = Math.pow(Math.random(), 1.4) * 22;
-                        let galTheta = galDist * 0.55 + arm + (Math.random() - 0.5) * 0.25;
-                        x = galDist * Math.cos(galTheta);
-                        y = (Math.random() - 0.5) * (3.0 - galDist * 0.12);
-                        z = galDist * Math.sin(galTheta);
-                        c.setHSL(0.58 + (galDist * 0.012), 0.9, 0.5 + (1.0 - galDist/22)*0.3);
-                        break;
-
-                    case 3: // Wormhole (4 Fingers)
-                        let percent = (i / PARTICLE_COUNT);
-                        let wZ = (percent - 0.5) * 40; // Tunnel depth vector
-                        let wTheta = percent * Math.PI * 160; // Hyper-spiral wrap
-                        let wRadius = 4.0 + Math.pow(Math.abs(percent - 0.5), 2.0) * 25.0;
-                        x = wRadius * Math.cos(wTheta);
-                        y = wRadius * Math.sin(wTheta);
-                        z = wZ;
-                        c.setHSL(0.70 + (percent * 0.15), 0.95, 0.45 + (1.0 - Math.abs(percent - 0.5)*2.0)*0.3);
-                        break;
-
-                    case 4: // Big Bang Shell / Fireworks (5 Fingers)
-                        let uF = Math.random(), vF = Math.random();
-                        let tF = uF * 2.0 * Math.PI, pF = Math.acos(2.0 * vF - 1.0);
-                        let vel = 12 + Math.random() * 15;
-                        x = vel * Math.sin(pF) * Math.cos(tF);
-                        y = vel * Math.sin(pF) * Math.sin(tF);
-                        z = vel * Math.cos(pF);
-                        c.setHSL(Math.random(), 0.9, 0.6);
-                        break;
+                if (type === 0) {
+                    let t = Math.PI * 2 * (i / PARTICLE_COUNT) * 120;
+                    x = 16 * Math.pow(Math.sin(t), 3) * 0.7; y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.7;
+                    c.setHSL(0.95 + (Math.random()*0.05), 0.85, 0.55);
+                } else if (type === 1) {
+                    if (i < PARTICLE_COUNT * 0.35) {
+                        let u = Math.random(), v = Math.random(), tSat = u * 2.0 * Math.PI, pSat = Math.acos(2.0 * v - 1.0), rad = 5.5 + Math.random() * 0.5;
+                        x = rad * Math.sin(pSat) * Math.cos(tSat); y = rad * Math.sin(pSat) * Math.sin(tSat) * 0.8; z = rad * Math.cos(pSat);
+                        c.setHSL(0.08, 0.8, 0.5);
+                    } else {
+                        let ringRad = 8.5 + Math.random() * 11.0, ringT = Math.random() * Math.PI * 2;
+                        x = ringRad * Math.cos(ringT); z = ringRad * Math.sin(ringT);
+                        c.setHSL(0.14, 0.65, 0.45);
+                    }
+                } else if (type === 2) {
+                    let arm = i % 2 === 0 ? 0.0 : Math.PI, galDist = Math.pow(Math.random(), 1.4) * 22, galTheta = galDist * 0.55 + arm + (Math.random() - 0.5) * 0.25;
+                    x = galDist * Math.cos(galTheta); y = (Math.random() - 0.5) * (3.0 - galDist * 0.12); z = galDist * Math.sin(galTheta);
+                    c.setHSL(0.58 + (galDist * 0.012), 0.9, 0.5 + (1.0 - galDist/22)*0.3);
+                } else if (type === 3) {
+                    let percent = (i / PARTICLE_COUNT), wZ = (percent - 0.5) * 40, wTheta = percent * Math.PI * 160, wRadius = 4.0 + Math.pow(Math.abs(percent - 0.5), 2.0) * 25.0;
+                    x = wRadius * Math.cos(wTheta); y = wRadius * Math.sin(wTheta); z = wZ;
+                    c.setHSL(0.70 + (percent * 0.15), 0.95, 0.45 + (1.0 - Math.abs(percent - 0.5)*2.0)*0.3);
+                } else if (type === 4) {
+                    let uF = Math.random(), vF = Math.random(), tF = uF * 2.0 * Math.PI, pF = Math.acos(2.0 * vF - 1.0), vel = 12 + Math.random() * 15;
+                    x = vel * Math.sin(pF) * Math.cos(tF); y = vel * Math.sin(pF) * Math.sin(tF); z = vel * Math.cos(pF);
+                    c.setHSL(Math.random(), 0.9, 0.6);
                 }
-
-                posArr[pIdx] = x; posArr[pIdx+1] = y; posArr[pIdx+2] = z;
-                colArr[pIdx] = c.r; colArr[pIdx+1] = c.g; colArr[pIdx+2] = c.b;
-                pIdx += 3;
+                posArr[pIdx] = x; posArr[pIdx+1] = y; posArr[pIdx+2] = z; colArr[pIdx] = c.r; colArr[pIdx+1] = c.g; colArr[pIdx+2] = c.b; pIdx += 3;
             }
         }
 
-        function triggerMorph(targetTemplateIndex) {
-            if (targetTemplateIndex === currentTemplateIndex) return;
-
-            const posAttr = particleGeometry.attributes.position;
-            const colAttr = particleGeometry.attributes.color;
-            
+        function triggerMorph(targetIndex) {
+            if (targetIndex === currentTemplateIndex) return;
             if(transitionProgress < 1.0) {
                 let mixVal = shaderMaterial.uniforms.uMix.value;
                 for(let i=0; i<PARTICLE_COUNT*3; i++){
-                    currentPositions[i] = currentPositions[i] + (targetPositions[i] - currentPositions[i]) * mixVal;
-                    currentColors[i] = currentColors[i] + (targetColors[i] - currentColors[i]) * mixVal;
+                    currentPositions[i] += (targetPositions[i] - currentPositions[i]) * mixVal;
+                    currentColors[i] += (targetColors[i] - currentColors[i]) * mixVal;
                 }
-            } else {
-                currentPositions.set(targetPositions);
-                currentColors.set(targetColors);
-            }
-
-            posAttr.copyArray(currentPositions); posAttr.needsUpdate = true;
-            colAttr.copyArray(currentColors); colAttr.needsUpdate = true;
-
-            generateShapeData(targetTemplateIndex, targetPositions, targetColors);
-            
-            particleGeometry.attributes.aTarget.copyArray(targetPositions);
-            particleGeometry.attributes.aTarget.needsUpdate = true;
-            particleGeometry.attributes.aColorTarget.copyArray(targetColors);
-            particleGeometry.attributes.aColorTarget.needsUpdate = true;
-
-            currentTemplateIndex = targetTemplateIndex;
-            transitionProgress = 0.0;
-
-            for(let i=0; i<=4; i++) {
-                const el = document.getElementById(`t${i}`);
-                if(el) el.className = (i === targetTemplateIndex) ? 'active-template' : '';
-            }
+            } else { currentPositions.set(targetPositions); currentColors.set(targetColors); }
+            particleGeometry.attributes.position.copyArray(currentPositions); particleGeometry.attributes.position.needsUpdate = true;
+            particleGeometry.attributes.color.copyArray(currentColors); particleGeometry.attributes.color.needsUpdate = true;
+            generateShapeData(targetIndex, targetPositions, targetColors);
+            particleGeometry.attributes.aTarget.copyArray(targetPositions); particleGeometry.attributes.aTarget.needsUpdate = true;
+            particleGeometry.attributes.aColorTarget.copyArray(targetColors); particleGeometry.attributes.aColorTarget.needsUpdate = true;
+            currentTemplateIndex = targetIndex; transitionProgress = 0.0;
+            for(let i=0; i<=4; i++) { document.getElementById(`t${i}`).className = (i === targetIndex) ? 'active-template' : ''; }
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            const elapsed = clock.getElapsedTime();
-
-            if (transitionProgress < 1.0) {
-                transitionProgress += delta * 1.4; // Morph acceleration
-                if(transitionProgress > 1.0) transitionProgress = 1.0;
-                shaderMaterial.uniforms.uMix.value = transitionProgress;
-            }
-
-            currentScale += (targetScale - currentScale) * 0.12;
-            currentHue += (targetHue - currentHue) * 0.12;
-
-            shaderMaterial.uniforms.uScale.value = currentScale;
-            shaderMaterial.uniforms.uHueShift.value = currentHue;
-            shaderMaterial.uniforms.uTime.value = elapsed;
-
-            particleSystem.rotation.y = elapsed * 0.05;
-            particleSystem.rotation.x = elapsed * 0.02;
-
+            const delta = clock.getDelta(), elapsed = clock.getElapsedTime();
+            if (transitionProgress < 1.0) { transitionProgress = Math.min(1.0, transitionProgress + delta * 1.4); shaderMaterial.uniforms.uMix.value = transitionProgress; }
+            currentScale += (targetScale - currentScale) * 0.12; currentHue += (targetHue - currentHue) * 0.12;
+            shaderMaterial.uniforms.uScale.value = currentScale; shaderMaterial.uniforms.uHueShift.value = currentHue; shaderMaterial.uniforms.uTime.value = elapsed;
+            particleSystem.rotation.y = elapsed * 0.05; particleSystem.rotation.x = elapsed * 0.02;
             renderer.render(scene, camera);
         }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        initThree(); animate();
 
-        // --- Gesture Controller Router ---
-        function handleHandTracking(results) {
-            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
-
-            const landmarks = results.multiHandLandmarks[0];
-
-            // Size Modifier (Pinch tracker)
-            const tTip = landmarks[4]; const iTip = landmarks[8];
-            const pinchDist = Math.sqrt(Math.pow(tTip.x-iTip.x,2)+Math.pow(tTip.y-iTip.y,2));
-            targetScale = THREE.MathUtils.mapLinear(pinchDist, 0.04, 0.28, 0.3, 2.5);
-
-            // Color Spectrum Modifier (Wrist tilt tracking)
-            const mKnuckle = landmarks[5]; const pKnuckle = landmarks[17];
-            const angle = Math.atan2(pKnuckle.y - mKnuckle.y, pKnuckle.x - mKnuckle.x);
-            targetHue = angle * 2.0; 
-
-            // Remapped Finger Counting Pipeline Router
-            const fingersUp = countFingers(landmarks);
-            if (fingersUp === 0 || fingersUp === 1) triggerMorph(0); // Fist/1 -> Heart
-            else if (fingersUp === 2) triggerMorph(1);               // 2 -> Saturn
-            else if (fingersUp === 3) triggerMorph(2);               // 3 -> Galaxy
-            else if (fingersUp === 4) triggerMorph(3);               // 4 -> Wormhole
-            else if (fingersUp === 5) triggerMorph(4);               // 5 -> Fireworks
-        }
-
-        function countFingers(hl) {
-            const tips = [8, 12, 16, 20]; const pips = [6, 10, 14, 18];
-            let count = 0;
-            for(let i=0; i<4; i++) { if(hl[tips[i]].y < hl[pips[i]].y) count++; }
-            if(Math.abs(hl[4].x - hl[2].x) > 0.055) count++;
-            return count;
-        }
-
-        // Initialize Systems
-        initThree();
-        animate();
-
+        // Setup MediaPipe
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
         hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.55, minTrackingConfidence: 0.55 });
-        hands.onResults(handleHandTracking);
-
-        const cameraFeed = new Camera(videoElement, {
-            onFrame: async () => { await hands.send({ image: videoElement }); },
-            width: 320,
-            height: 240
+        hands.onResults((results) => {
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
+            const hl = results.multiHandLandmarks[0];
+            targetScale = THREE.MathUtils.mapLinear(Math.sqrt(Math.pow(hl[4].x-hl[8].x,2)+Math.pow(hl[4].y-hl[8].y,2)), 0.04, 0.28, 0.3, 2.5);
+            targetHue = Math.atan2(hl[17].y - hl[5].y, hl[17].x - hl[5].x) * 2.0;
+            let count = 0;
+            for(let i=0; i<4; i++) { if(hl[[8,12,16,20][i]].y < hl[[6,10,14,18][i]].y) count++; }
+            if(Math.abs(hl[4].x - hl[2].x) > 0.055) count++;
+            if (count <= 1) triggerMorph(0); else if (count === 2) triggerMorph(1); else if (count === 3) triggerMorph(2); else if (count === 4) triggerMorph(3); else if (count === 5) triggerMorph(4);
         });
-        cameraFeed.start().catch(err => console.log("Webcam offline or initialization failed."));
+
+        const cameraFeed = new Camera(document.getElementById('webcam'), {
+            onFrame: async () => { await hands.send({ image: document.getElementById('webcam') }); }, width: 320, height: 240
+        });
+        
+        cameraFeed.start().catch(() => {
+            document.getElementById('fallback-notice').style.display = 'block';
+            // Backup controls if camera is denied
+            window.addEventListener('mousemove', (e) => {
+                targetScale = (e.clientX / window.innerWidth) * 2.0 + 0.5;
+                targetHue = (e.clientY / window.innerHeight) * Math.PI;
+            });
+            window.addEventListener('keydown', (e) => {
+                if(e.key >= 1 && e.key <= 5) triggerMorph(parseInt(e.key) - 1);
+            });
+        });
     </script>
 </body>
 </html>
