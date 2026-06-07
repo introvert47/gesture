@@ -27,8 +27,8 @@
     <div id="ui">
         <h1>Gesture Controls</h1>
         <p>🖐️ <b>Move Hand:</b> Rotate Object</p>
-        <p>🤏 <b>Pinch:</b> Scale / Expand</p>
-        <p>✊ <b>Close Fist:</b> Change Shape & Color</p>
+        <p>🤏 <b>Thumb & Index Pinch:</b> Scale / Expand</p>
+        <p>🤙 <b>Thumb & Pinky Tap:</b> Change Shape & Color</p>
         <p>Current Shape: <span id="current-shape">Sphere</span></p>
     </div>
 
@@ -55,8 +55,8 @@
         const colors = [0x00ff88, 0xff0055, 0xffbb00, 0x8800ff, 0x00ffff, 0xff00ff, 0x0088ff];
         
         let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
-        let fistClosed = false;
-        let lastFistToggleTime = 0;
+        let shapeToggleClosed = false; 
+        let lastToggleTime = 0;
 
         // --- Three.js Setup ---
         const scene = new THREE.Scene();
@@ -184,9 +184,9 @@
 
         function nextShape() {
             const now = Date.now();
-            if (now - lastFistToggleTime < 1000) return; 
+            if (now - lastToggleTime < 1000) return; // 1 second cooldown
             
-            lastFistToggleTime = now;
+            lastToggleTime = now;
             currentShapeIndex = (currentShapeIndex + 1) % shapes.length;
             
             const shapeName = shapes[currentShapeIndex];
@@ -219,34 +219,40 @@
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // 1. Calculate Pinch
+                // 1. Calculate Pinch (Thumb & Index) for Scaling
                 const thumbTip = landmarks[4];
                 const indexTip = landmarks[8];
-                const distance = Math.hypot(
+                const scaleDistance = Math.hypot(
                     thumbTip.x - indexTip.x,
                     thumbTip.y - indexTip.y,
                     thumbTip.z - indexTip.z
                 );
                 
-                handScale = THREE.MathUtils.lerp(handScale, Math.max(0.5, Math.min(distance * 10, 3)), 0.1);
+                handScale = THREE.MathUtils.lerp(handScale, Math.max(0.5, Math.min(scaleDistance * 10, 3)), 0.1);
 
-                // 2. Calculate Rotation
+                // 2. Calculate Rotation (Palm Movement)
                 const palm = landmarks[9];
                 targetRotationY = (palm.x - 0.5) * Math.PI * 2;
                 targetRotationX = (palm.y - 0.5) * Math.PI * 2;
 
-                // 3. Detect Fist
-                const wrist = landmarks[0];
-                const middleTip = landmarks[12];
-                const fistDist = Math.hypot(wrist.x - middleTip.x, wrist.y - middleTip.y);
+                // 3. Detect Thumb & Pinky Tap for Changing Shapes
+                const pinkyTip = landmarks[20];
+                const shapeChangeDist = Math.hypot(
+                    thumbTip.x - pinkyTip.x,
+                    thumbTip.y - pinkyTip.y,
+                    thumbTip.z - pinkyTip.z
+                );
                 
-                if (fistDist < 0.25 && !fistClosed) {
-                    fistClosed = true;
+                // Trigger when thumb and pinky touch
+                if (shapeChangeDist < 0.08 && !shapeToggleClosed) {
+                    shapeToggleClosed = true;
                     nextShape();
-                } else if (fistDist >= 0.25) {
-                    fistClosed = false;
+                } else if (shapeChangeDist >= 0.08) {
+                    shapeToggleClosed = false;
                 }
+                
             } else {
+                // Return to default state smoothly if no hands detected
                 handScale = THREE.MathUtils.lerp(handScale, 1, 0.05);
                 targetRotationX = THREE.MathUtils.lerp(targetRotationX, 0, 0.05);
                 targetRotationY = THREE.MathUtils.lerp(targetRotationY, 0, 0.05);
