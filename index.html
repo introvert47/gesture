@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Hand-Tracked Particle System</title>
+    <title>Two-Hand Explicit Control Particle System</title>
     <style>
         body {
             margin: 0;
@@ -19,9 +19,8 @@
             left: 0;
             z-index: 1;
         }
-        /* Hidden webcam video element needed for MediaPipe */
         #webcam {
-            transform: scaleX(-1); /* Mirror the video feed */
+            transform: scaleX(-1);
             position: absolute;
             bottom: 20px;
             right: 20px;
@@ -71,12 +70,10 @@
     <video id="webcam" autoplay playsinline></video>
     
     <div id="ui-overlay">
-        <h1>Hand-Controlled Particles</h1>
-        <p>• Pinch (Thumb + Index): Explode System</p>
-        <p>• 1 Finger Up: Heart Shape</p>
-        <p>• 2 Fingers Up: Saturn Shape</p>
-        <p>• 3 Fingers Up: Flower Shape</p>
-        <p>• 4+ Fingers Up: Fireworks Shape</p>
+        <h1>Dual-Hand Particle Engine</h1>
+        <p>• <b>Right Hand (Thumb/Index):</b> Controls System Size & Expansion</p>
+        <p>• <b>Left Hand (Thumb/Index):</b> Controls Particle Color Spectrum</p>
+        <p>• <b>Horizontal Position:</b> Move hand Left ➔ Right to cycle shapes</p>
         <div id="current-shape" class="gesture-badge">Shape: Loading...</div>
     </div>
 
@@ -84,18 +81,22 @@
         import * as THREE from 'three';
 
         // --- System Configuration ---
-        const PARTICLE_COUNT = 15000;
+        const PARTICLE_COUNT = 20000; 
         let scene, camera, renderer, particleSystem, particleGeometry;
         let currentTargetPositions = new Float32Array(PARTICLE_COUNT * 3);
-        let basePositions = { heart: [], saturn: [], flower: [], fireworks: [] };
+        let basePositions = { heart: [], saturn: [], flower: [], galaxy: [] };
         
-        // Interaction Tracking State
+        // Interaction System States
         let targetCenter = new THREE.Vector3(0, 0, 0);
         let currentCenter = new THREE.Vector3(0, 0, 0);
         let expansionFactor = 0.0;
         let targetExpansion = 0.0;
         let activeShape = 'saturn';
-        let colorHue = 0.6; 
+        let targetHue = 0.6;
+
+        // Stability Filter Buffers
+        let shapeDebounceCounter = 0;
+        let pendingShape = 'saturn';
 
         const videoElement = document.getElementById('webcam');
         const shapeBadge = document.getElementById('current-shape');
@@ -103,7 +104,7 @@
         // --- 1. Math Templates for Shapes ---
         function generateShapeTemplates() {
             for (let i = 0; i < PARTICLE_COUNT; i++) {
-                // Heart Shape Formula
+                // Heart Shape
                 let t = Math.PI * (2 * Math.random() - 1);
                 let phi = Math.PI * (Math.random() - 0.5);
                 let hx = 16 * Math.pow(Math.sin(t), 3);
@@ -111,31 +112,38 @@
                 let hz = phi * 5;
                 basePositions.heart.push(hx * 0.15, hy * 0.15, hz * 0.15);
 
-                // Saturn Shape Formula (Sphere Matrix + Plane Ring Matrix)
-                if (i < PARTICLE_COUNT * 0.4) {
+                // Saturn Shape
+                if (i < PARTICLE_COUNT * 0.35) {
                     let u = Math.random();
                     let v = Math.random();
                     let theta = u * 2.0 * Math.PI;
                     let phiSat = Math.acos(2.0 * v - 1.0);
-                    let r = 1.5 * Math.cbrt(Math.random());
+                    let r = 1.6 * Math.cbrt(Math.random());
                     basePositions.saturn.push(r * Math.sin(phiSat) * Math.cos(theta), r * Math.sin(phiSat) * Math.sin(theta), r * Math.cos(phiSat));
                 } else {
-                    let rRing = 2.5 + Math.random() * 2.5;
+                    let rRing = 2.4 + Math.random() * 2.6;
                     let thetaRing = Math.random() * Math.PI * 2;
-                    basePositions.saturn.push(rRing * Math.cos(thetaRing), (Math.random() - 0.5) * 0.1, rRing * Math.sin(thetaRing));
+                    basePositions.saturn.push(rRing * Math.cos(thetaRing), (Math.random() - 0.5) * 0.12, rRing * Math.sin(thetaRing));
                 }
 
-                // Flower Shape Formula (Rose Curve)
+                // Flower Shape
                 let thetaFlower = Math.random() * Math.PI * 2;
-                let petalCount = 5;
-                let rFlower = 3 * Math.sin(petalCount * thetaFlower) + (Math.random() * 0.5);
-                basePositions.flower.push(rFlower * Math.cos(thetaFlower), rFlower * Math.sin(thetaFlower), (Math.random() - 0.5) * 1);
+                let petalCount = 6;
+                let rFlower = 3 * Math.sin(petalCount * thetaFlower) + (Math.random() * 0.4);
+                basePositions.flower.push(rFlower * Math.cos(thetaFlower), rFlower * Math.sin(thetaFlower), (Math.random() - 0.5) * 0.8);
 
-                // Fireworks Outward Velocity Rays
-                let thetaFire = Math.random() * Math.PI * 2;
-                let phiFire = Math.acos((Math.random() * 2) - 1);
-                let speed = 1.5 + Math.random() * 4.5;
-                basePositions.fireworks.push(speed * Math.sin(phiFire) * Math.cos(thetaFire), speed * Math.sin(phiFire) * Math.sin(thetaFire), speed * Math.cos(phiFire));
+                // Galaxy Spiral Shape
+                let rGal = Math.random() * 5.5;
+                let armOffset = (i % 2 === 0) ? 0 : Math.PI; 
+                let spiralFactor = 1.8;
+                let thetaGal = rGal * spiralFactor + armOffset + (Math.random() - 0.5) * 0.4;
+                let yThickness = (Math.random() - 0.5) * 0.8 * Math.exp(-rGal * 0.5);
+                
+                basePositions.galaxy.push(
+                    rGal * Math.cos(thetaGal),
+                    yThickness,
+                    rGal * Math.sin(thetaGal)
+                );
             }
         }
 
@@ -144,10 +152,10 @@
             const container = document.getElementById('canvas-container');
             
             scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x000000, 0.035);
+            scene.fog = new THREE.FogExp2(0x000000, 0.03);
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.z = 12;
+            camera.position.set(0, 3, 12); 
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -167,7 +175,7 @@
             const pTexture = createCircleTexture();
 
             const particleMaterial = new THREE.PointsMaterial({
-                size: 0.18,
+                size: 0.16,
                 map: pTexture,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
@@ -182,7 +190,6 @@
             updateTargetBuffer(activeShape);
         }
 
-        // Generate radial blur textures dynamically via standard canvas
         function createCircleTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 32;
@@ -190,7 +197,7 @@
             const ctx = canvas.getContext('2d');
             const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
             gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.2, 'rgba(0,255,255,0.8)');
+            gradient.addColorStop(0.2, 'rgba(255,255,255,0.6)');
             gradient.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 32, 32);
@@ -218,7 +225,7 @@
         });
 
         hands.setOptions({
-            maxNumHands: 1,
+            maxNumHands: 2, // Track both left and right hands
             modelComplexity: 1,
             minDetectionConfidence: 0.7,
             minTrackingConfidence: 0.7
@@ -235,70 +242,75 @@
         });
         cameraFeed.start();
 
-        // --- 4. Isolated Gesture Engine ---
+        // --- 4. Isolated Strict Dual-Hand Engine ---
         function onHandResults(results) {
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
+            // Default reset states if specific hands drop out of camera view
+            let rightHandFound = false;
+            let leftHandFound = false;
 
-                // Set particle cluster anchor to Middle Finger MCP joint (Landmark 9)
-                const mcc = landmarks[9];
-                targetCenter.x = -(mcc.x - 0.5) * 15; 
-                targetCenter.y = -(mcc.y - 0.5) * 10;
-                targetCenter.z = -mcc.z * 15;
+            if (results.multiHandLandmarks && results.multiHandedness) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    // MediaPipe detects handedness from camera view, let's align it correctly
+                    const handType = results.multiHandedness[i].label; 
 
-                // Grab finger landmarks needed to calculate absolute state extensions
-                const thumbTip = landmarks[4];
-                const indexTip = landmarks[8];
-                const indexPip = landmarks[6];
-                const middleTip = landmarks[12];
-                const middlePip = landmarks[10];
-                const ringTip = landmarks[16];
-                const ringPip = landmarks[14];
-                const pinkyTip = landmarks[20];
-                const pinkyPip = landmarks[18];
+                    // Capture standard horizontal coordinates for general system center and template routing
+                    const mcc = landmarks[9];
+                    targetCenter.x = -(mcc.x - 0.5) * 15; 
+                    targetCenter.y = -(mcc.y - 0.5) * 10;
+                    targetCenter.z = -mcc.z * 15;
 
-                // Determine if extended upright by analyzing relative Y coordinates
-                const isIndexOpen  = indexTip.y < indexPip.y;
-                const isMiddleOpen = middleTip.y < middlePip.y;
-                const isRingOpen   = ringTip.y < ringPip.y;
-                const isPinkyOpen  = pinkyTip.y < pinkyPip.y;
+                    // Standard template router
+                    let calculatedShape = 'saturn';
+                    if (mcc.x < 0.28) {
+                        calculatedShape = 'heart';
+                    } else if (mcc.x >= 0.28 && mcc.x < 0.52) {
+                        calculatedShape = 'saturn';
+                    } else if (mcc.x >= 0.52 && mcc.x < 0.76) {
+                        calculatedShape = 'flower';
+                    } else {
+                        calculatedShape = 'galaxy';
+                    }
 
-                // Total open fingers
-                let openFingersCount = 0;
-                if (isIndexOpen) openFingersCount++;
-                if (isMiddleOpen) openFingersCount++;
-                if (isRingOpen) openFingersCount++;
-                if (isPinkyOpen) openFingersCount++;
+                    if (calculatedShape === pendingShape) {
+                        shapeDebounceCounter++;
+                        if (shapeDebounceCounter > 10 && activeShape !== calculatedShape) {
+                            updateTargetBuffer(calculatedShape);
+                        }
+                    } else {
+                        pendingShape = calculatedShape;
+                        shapeDebounceCounter = 0;
+                    }
 
-                // Strict Euclidean distance for explicit pinch checks
-                const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y, thumbTip.z - indexTip.z);
+                    // Extract pinch distance measurements (Thumb 4 to Index 8)
+                    const thumbTip = landmarks[4];
+                    const indexTip = landmarks[8];
+                    const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y, thumbTip.z - indexTip.z);
 
-                // Run structural state router
-                if (pinchDist < 0.045) {
-                    targetExpansion = 4.5;
-                    colorHue = 0.05; // Force bright fire orange color spectrum
-                } else {
-                    targetExpansion = 0.0;
-                    colorHue = 0.4 + (mcc.x * 0.4); // Smoothly shift standard hues across screen space
+                    // ROUTE ACTIONS BASED ON STRICT LEFT / RIGHT IDENTIFICATION
+                    if (handType === 'Right') {
+                        rightHandFound = true;
+                        // Map right hand pinch size directly: tight pinch = normal size, wide stretch = large scale explosion
+                        // Clamped between 0.03 (pinched) and 0.25 (fully open)
+                        let normalizedExpansion = (pinchDist - 0.04) * 12.0;
+                        targetExpansion = THREE.MathUtils.clamp(normalizedExpansion, 0.0, 3.5);
+                    } 
                     
-                    if (openFingersCount === 1 && activeShape !== 'heart') {
-                        updateTargetBuffer('heart');
-                    } else if (openFingersCount === 2 && activeShape !== 'saturn') {
-                        updateTargetBuffer('saturn');
-                    } else if (openFingersCount === 3 && activeShape !== 'flower') {
-                        updateTargetBuffer('flower');
-                    } else if (openFingersCount >= 4 && activeShape !== 'fireworks') {
-                        updateTargetBuffer('fireworks');
+                    if (handType === 'Left') {
+                        leftHandFound = true;
+                        // Map left hand pinch color directly: tracks open span to rotate color hues around wheel spectrum smoothly
+                        let normalizedHue = 0.1 + (pinchDist * 2.5);
+                        targetHue = THREE.MathUtils.clamp(normalizedHue, 0.0, 1.0);
                     }
                 }
-            } else {
-                // Return safely to baseline coordinates when tracking drops out
-                targetCenter.set(0, 0, 0);
-                targetExpansion = 0.0;
             }
+
+            // Fallback limits if one of the tracking hands completely leaves camera view
+            if (!rightHandFound) targetExpansion = 0.0;
+            if (!leftHandFound) targetHue = 0.55; // Default back to nice clean blue
         }
 
-        // --- 5. Fluid Animation Loop & Matrix Morphing ---
+        // --- 5. Fluid Animation Loop ---
         const clock = new THREE.Clock();
 
         function animate() {
@@ -308,11 +320,11 @@
             const positions = particleGeometry.attributes.position.array;
             const colors = particleGeometry.attributes.color.array;
 
-            // Interpolate position changes using Lerp vectors
-            currentCenter.lerp(targetCenter, 0.08);
+            currentCenter.lerp(targetCenter, 0.07);
             expansionFactor += (targetExpansion - expansionFactor) * 0.1;
 
-            const targetColor = new THREE.Color().setHSL(colorHue % 1.0, 1.0, 0.6);
+            // Generate clean dynamic color from hue target shifted by left hand
+            const finalColor = new THREE.Color().setHSL(targetHue, 1.0, 0.55);
 
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
@@ -321,33 +333,31 @@
                 let ty = currentTargetPositions[i3 + 1];
                 let tz = currentTargetPositions[i3 + 2];
 
-                // Continuous subtle ambient drift turbulence
-                if (activeShape !== 'fireworks') {
-                    tx += Math.sin(elapsedTime * 1.5 + i) * 0.04;
-                    ty += Math.cos(elapsedTime * 1.2 + i) * 0.04;
+                if (activeShape !== 'galaxy') {
+                    tx += Math.sin(elapsedTime * 1.3 + i) * 0.03;
+                    ty += Math.cos(elapsedTime * 1.1 + i) * 0.03;
                 }
 
-                // Append custom tracking expansion transforms
+                // Apply size factors governed strictly by right hand calculations
                 tx *= (1.0 + expansionFactor);
                 ty *= (1.0 + expansionFactor);
                 tz *= (1.0 + expansionFactor);
 
-                // Target position interpolations
-                positions[i3]     += ((tx + currentCenter.x) - positions[i3]) * 0.06;
-                positions[i3 + 1] += ((ty + currentCenter.y) - positions[i3 + 1]) * 0.06;
-                positions[i3 + 2] += ((tz + currentCenter.z) - positions[i3 + 2]) * 0.06;
+                // Morph vectors smoothly
+                positions[i3]     += ((tx + currentCenter.x) - positions[i3]) * 0.07;
+                positions[i3 + 1] += ((ty + currentCenter.y) - positions[i3 + 1]) * 0.07;
+                positions[i3 + 2] += ((tz + currentCenter.z) - positions[i3 + 2]) * 0.07;
 
-                // Color interpolations
-                colors[i3]     += (targetColor.r - colors[i3]) * 0.03;
-                colors[i3 + 1] += (targetColor.g - colors[i3 + 1]) * 0.03;
-                colors[i3 + 2] += (targetColor.b - colors[i3 + 2]) * 0.03;
+                // Color shifts governed strictly by left hand calculations
+                colors[i3]     += (finalColor.r - colors[i3]) * 0.05;
+                colors[i3 + 1] += (finalColor.g - colors[i3 + 1]) * 0.05;
+                colors[i3 + 2] += (finalColor.b - colors[i3 + 2]) * 0.05;
             }
 
             particleGeometry.attributes.position.needsUpdate = true;
             particleGeometry.attributes.color.needsUpdate = true;
 
-            // Constant passive system orbital spin
-            particleSystem.rotation.y = elapsedTime * 0.05;
+            particleSystem.rotation.y = elapsedTime * 0.06;
 
             renderer.render(scene, camera);
         }
