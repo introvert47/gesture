@@ -47,8 +47,12 @@
         // --- Configuration ---
         const PARTICLE_COUNT = 8000;
         let currentShapeIndex = 0;
-        const shapes = ['Sphere', 'Heart', 'Saturn', 'Flower'];
-        const colors = [0x00ff88, 0xff0055, 0xffbb00, 0x8800ff];
+        
+        // Full list of shapes
+        const shapes = ['Sphere', 'Heart', 'Saturn', 'Flower', 'Torus', 'DNA', 'Galaxy'];
+        
+        // Colors mapped to shapes
+        const colors = [0x00ff88, 0xff0055, 0xffbb00, 0x8800ff, 0x00ffff, 0xff00ff, 0x0088ff];
         
         let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
         let fistClosed = false;
@@ -69,14 +73,13 @@
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(PARTICLE_COUNT * 3);
         
-        // Initialize with random positions (Sphere)
+        // Initialize with random positions
         for(let i = 0; i < PARTICLE_COUNT * 3; i++) {
             positions[i] = (Math.random() - 0.5) * 20;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         
-        // Custom Shader Material for better glowing particles
         const material = new THREE.PointsMaterial({
             size: 0.15,
             color: colors[0],
@@ -105,23 +108,20 @@
                     z = radius * Math.cos(phi);
                 } 
                 else if (type === 'Heart') {
-                    // Heart mathematical formula
                     const t = (Math.random() - 0.5) * 2 * Math.PI;
-                    const r = 0.5 + Math.random() * 0.5; // Thickness
+                    const r = 0.5 + Math.random() * 0.5; 
                     x = r * 16 * Math.pow(Math.sin(t), 3);
                     y = r * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
                     z = (Math.random() - 0.5) * 4; 
                 }
                 else if (type === 'Saturn') {
                     if (Math.random() > 0.4) {
-                        // Ring
                         const r = 12 + Math.random() * 8;
                         const theta = Math.random() * 2 * Math.PI;
                         x = r * Math.cos(theta);
-                        y = (Math.random() - 0.5) * 0.5; // Flat ring
+                        y = (Math.random() - 0.5) * 0.5; 
                         z = r * Math.sin(theta);
                     } else {
-                        // Planet
                         const radius = 6 * Math.cbrt(Math.random());
                         const theta = Math.random() * 2 * Math.PI;
                         const phi = Math.acos(2 * Math.random() - 1);
@@ -138,6 +138,39 @@
                     y = r * Math.sin(theta);
                     z = (Math.random() - 0.5) * 2;
                 }
+                else if (type === 'Torus') {
+                    const u = Math.random() * Math.PI * 2;
+                    const v = Math.random() * Math.PI * 2;
+                    const R = 8; 
+                    const r = 4 * Math.random(); 
+                    x = (R + r * Math.cos(v)) * Math.cos(u);
+                    y = (R + r * Math.cos(v)) * Math.sin(u);
+                    z = r * Math.sin(v);
+                }
+                else if (type === 'DNA') {
+                    const t = (Math.random() - 0.5) * 40;
+                    const strandOffset = Math.random() > 0.5 ? 0 : Math.PI;
+                    const radius = 5;
+                    x = Math.cos(t * 0.4 + strandOffset) * radius;
+                    y = t;
+                    z = Math.sin(t * 0.4 + strandOffset) * radius;
+                    
+                    x += (Math.random() - 0.5) * 1.5;
+                    y += (Math.random() - 0.5) * 0.5;
+                    z += (Math.random() - 0.5) * 1.5;
+                }
+                else if (type === 'Galaxy') {
+                    const arms = 4;
+                    const armOffset = Math.floor(Math.random() * arms) * ((Math.PI * 2) / arms);
+                    const radius = Math.random() * 18;
+                    const spin = radius * 0.4;
+                    
+                    const randomOffset = (Math.random() - 0.5) * (20 - radius) * 0.15; 
+                    
+                    x = Math.cos(spin + armOffset) * radius + randomOffset;
+                    y = (Math.random() - 0.5) * (15 / (radius + 1)); 
+                    z = Math.sin(spin + armOffset) * radius + randomOffset;
+                }
 
                 positions[i3] = x;
                 positions[i3 + 1] = y;
@@ -151,15 +184,16 @@
 
         function nextShape() {
             const now = Date.now();
-            if (now - lastFistToggleTime < 1000) return; // Cooldown of 1 second
+            if (now - lastFistToggleTime < 1000) return; 
             
             lastFistToggleTime = now;
             currentShapeIndex = (currentShapeIndex + 1) % shapes.length;
             
             const shapeName = shapes[currentShapeIndex];
-            document.getElementById('current-shape').innerText = shapeName;
+            const colorElement = document.getElementById('current-shape');
+            colorElement.innerText = shapeName;
+            colorElement.style.color = '#' + colors[currentShapeIndex].toString(16).padStart(6, '0');
             
-            // Generate new targets and change color smoothly
             targetPositions = generateShape(shapeName);
             material.color.setHex(colors[currentShapeIndex]);
         }
@@ -185,7 +219,7 @@
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // 1. Calculate Pinch (Expansion)
+                // 1. Calculate Pinch
                 const thumbTip = landmarks[4];
                 const indexTip = landmarks[8];
                 const distance = Math.hypot(
@@ -194,16 +228,14 @@
                     thumbTip.z - indexTip.z
                 );
                 
-                // Map distance to scale (0.05 to 0.3 mapped to 0.5 to 2.5)
                 handScale = THREE.MathUtils.lerp(handScale, Math.max(0.5, Math.min(distance * 10, 3)), 0.1);
 
-                // 2. Calculate Rotation based on palm center (landmark 9)
+                // 2. Calculate Rotation
                 const palm = landmarks[9];
                 targetRotationY = (palm.x - 0.5) * Math.PI * 2;
                 targetRotationX = (palm.y - 0.5) * Math.PI * 2;
 
-                // 3. Detect Fist (Change Shape)
-                // Compare distance from wrist (0) to middle finger tip (12)
+                // 3. Detect Fist
                 const wrist = landmarks[0];
                 const middleTip = landmarks[12];
                 const fistDist = Math.hypot(wrist.x - middleTip.x, wrist.y - middleTip.y);
@@ -215,7 +247,6 @@
                     fistClosed = false;
                 }
             } else {
-                // Return to default state smoothly if no hands detected
                 handScale = THREE.MathUtils.lerp(handScale, 1, 0.05);
                 targetRotationX = THREE.MathUtils.lerp(targetRotationX, 0, 0.05);
                 targetRotationY = THREE.MathUtils.lerp(targetRotationY, 0, 0.05);
@@ -235,21 +266,17 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // 1. Interpolate particles toward their target positions
             const currentPositions = geometry.attributes.position.array;
             for (let i = 0; i < currentPositions.length; i++) {
-                currentPositions[i] += (targetPositions[i] - currentPositions[i]) * 0.05; // 0.05 is the lerp speed
+                currentPositions[i] += (targetPositions[i] - currentPositions[i]) * 0.05; 
             }
             geometry.attributes.position.needsUpdate = true;
 
-            // 2. Apply Gesture Controls (Scale and Rotation)
             particleSystem.scale.set(handScale, handScale, handScale);
             
-            // Smoothly interpolate rotation
             particleSystem.rotation.x += (targetRotationX - particleSystem.rotation.x) * 0.1;
             particleSystem.rotation.y += (targetRotationY - particleSystem.rotation.y) * 0.1;
 
-            // Base gentle auto-rotation
             particleSystem.rotation.y += 0.002;
 
             renderer.render(scene, camera);
@@ -257,7 +284,6 @@
 
         animate();
 
-        // Handle Window Resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
