@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Particle Nexus — Gesture Field</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  :root{
+    --base:#1e1e2e; --mantle:#181825; --crust:#11111b;
+    --text:#cdd6f4; --subtext:#a6adc8; --surface0:#313244; --surface1:#45475a;
+    --lavender:#b4befe; --blue:#89b4fa; --sapphire:#74c7ec; --mauve:#cba6f7;
+    --pink:#f5c2e7; --red:#f38ba8; --peach:#fab387; --yellow:#f9e2af;
+    --green:#a6e3a1; --teal:#94e2d5;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:var(--crust); color:var(--text);
+    font-family:'JetBrains Mono', monospace;
+    touch-action:none;
+  }
+  #scene-container{ position:fixed; inset:0; }
+  canvas{ display:block; }
+
+  #camera-preview{
+    position:fixed; top:112px; right:14px; z-index:19;
+    width:190px; height:143px; border-radius:10px; overflow:hidden;
+    background:#000; border:1px solid rgba(180,190,254,0.22);
+    box-shadow:0 6px 22px rgba(0,0,0,0.4);
+    transform:scaleX(-1); /* mirror for a natural selfie view */
+    display:none;
+  }
+  #camera-preview.on{ display:block; }
+  #camera-preview video{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  #camera-preview canvas{
+    position:absolute; inset:0; width:100%; height:100%;
+  }
+  #camera-preview-label{
+    position:absolute; top:6px; left:8px; font-size:9px; letter-spacing:1.5px;
+    color:var(--green); font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,0.7);
+    transform:scaleX(-1); /* un-mirror the text so it reads normally */
+  }
+
+  .panel{
+    position:fixed; background:rgba(24,24,37,0.72); backdrop-filter:blur(10px);
+    border:1px solid rgba(180,190,254,0.14); border-radius:10px;
+    color:var(--text); z-index:20; user-select:none;
+  }
+
+  #hud{
+    top:14px; left:14px; padding:12px 16px; max-width:290px;
+  }
+  #hud .title{
+    font-size:13px; font-weight:700; letter-spacing:2px; color:var(--lavender);
+    display:flex; align-items:center; gap:8px;
+  }
+  #hud .title .dot{
+    width:7px; height:7px; border-radius:50%; background:var(--green);
+    box-shadow:0 0 8px var(--green);
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  #hud .title .dot.off{ background:var(--red); box-shadow:0 0 8px var(--red); animation:none; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  #hud .row{ display:flex; justify-content:space-between; font-size:11px; color:var(--subtext); margin-top:8px; }
+  #hud .row b{ color:var(--text); font-weight:600; }
+  #hud .status-line{
+    margin-top:10px; font-size:10.5px; color:var(--subtext); line-height:1.5;
+    border-top:1px solid rgba(255,255,255,0.08); padding-top:8px;
+  }
+  #hud .status-line b{ color:var(--peach); }
+
+  #shape-name{
+    position:fixed; top:14px; right:14px; padding:10px 18px;
+    font-size:12px; letter-spacing:1.5px; font-weight:600; color:var(--text);
+    display:flex; align-items:center; gap:10px;
+  }
+  #shape-name .swatch{ width:10px; height:10px; border-radius:3px; }
+
+  #camera-toggle{
+    position:fixed; top:66px; right:14px; padding:9px 14px;
+    font-family:inherit; font-size:11px; font-weight:600; letter-spacing:1px;
+    background:rgba(137,180,250,0.14); color:var(--blue); border:1px solid rgba(137,180,250,0.35);
+    border-radius:8px; cursor:pointer; z-index:20;
+  }
+  #camera-toggle:active{ transform:scale(0.96); }
+  #camera-toggle.active{ background:rgba(166,227,161,0.16); color:var(--green); border-color:rgba(166,227,161,0.4); }
+
+  #shape-dock{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:104px;
+    display:flex; flex-wrap:wrap; justify-content:center; gap:8px; padding:8px; z-index:20;
+    max-width:520px;
+  }
+  .shape-btn{
+    width:40px; height:40px; border-radius:9px; border:1px solid rgba(255,255,255,0.1);
+    background:rgba(49,50,68,0.55); color:var(--subtext); font-size:15px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    font-family:inherit;
+  }
+  .shape-btn.active{
+    background:rgba(180,190,254,0.2); color:var(--lavender); border-color:var(--lavender);
+    box-shadow:0 0 14px rgba(180,190,254,0.35);
+  }
+  .shape-btn:active{ transform:scale(0.94); }
+
+  #gesture-guide{
+    left:14px; bottom:14px; padding:10px 14px; font-size:10.5px; color:var(--subtext);
+    max-width:300px; line-height:1.9;
+  }
+  #gesture-guide .g-title{
+    font-size:10px; letter-spacing:1.5px; color:var(--mauve); font-weight:700; margin-bottom:5px;
+  }
+  #gesture-guide .g-row{ display:flex; gap:8px; align-items:baseline; }
+  #gesture-guide .g-row span.k{ color:var(--text); min-width:56px; display:inline-block; }
+  #gesture-guide-toggle{
+    position:fixed; left:14px; bottom:14px; z-index:21; padding:8px 12px;
+    font-family:inherit; font-size:10px; letter-spacing:1px; color:var(--subtext);
+    background:rgba(24,24,37,0.72); border:1px solid rgba(255,255,255,0.1); border-radius:8px;
+    cursor:pointer; display:none;
+  }
+
+  #permission-overlay{
+    position:fixed; inset:0; z-index:50; background:rgba(17,17,27,0.92);
+    display:flex; align-items:center; justify-content:center; text-align:center; padding:24px;
+  }
+  #permission-overlay .card{
+    max-width:420px; background:var(--mantle); border:1px solid rgba(180,190,254,0.2);
+    border-radius:14px; padding:28px 26px;
+  }
+  #permission-overlay h2{
+    font-size:15px; letter-spacing:1.5px; color:var(--lavender); margin:0 0 10px;
+  }
+  #permission-overlay p{ font-size:12px; color:var(--subtext); line-height:1.7; margin:0 0 20px; }
+  #permission-overlay button{
+    font-family:inherit; font-size:12px; font-weight:600; letter-spacing:1px;
+    padding:11px 20px; border-radius:8px; border:none; cursor:pointer; margin:0 6px;
+  }
+  #btn-enable-cam{ background:var(--lavender); color:var(--crust); }
+  #btn-skip-cam{ background:transparent; color:var(--subtext); border:1px solid var(--surface1) !important; }
+
+  #toast{
+    position:fixed; top:120px; left:50%; transform:translateX(-50%) translateY(-10px);
+    background:rgba(24,24,37,0.9); border:1px solid rgba(255,255,255,0.14);
+    padding:9px 16px; border-radius:8px; font-size:11px; color:var(--text);
+    z-index:30; opacity:0; transition:opacity .35s ease, transform .35s ease; pointer-events:none;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width:640px){
+    #hud{ max-width:170px; padding:9px 11px; }
+    #hud .title{ font-size:11px; }
+    #hud .row, #hud .status-line{ font-size:9.5px; }
+    #shape-name{ font-size:10px; padding:8px 12px; top:12px; right:12px; }
+    #camera-toggle{ padding:7px 10px; font-size:9.5px; top:56px; right:12px; }
+    #camera-preview{ top:96px; right:12px; width:130px; height:98px; }
+    #shape-dock{ bottom:80px; gap:6px; max-width:88vw; }
+    .shape-btn{ width:34px; height:34px; font-size:13px; }
+    #gesture-guide{ display:none; }
+    #gesture-guide-toggle{ display:block; }
+    #gesture-guide.mobile-open{
+      display:block; bottom:56px; left:12px; right:12px; max-width:none;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="scene-container"></div>
+
+<div id="camera-preview">
+  <video id="video-feed" playsinline muted autoplay></video>
+  <canvas id="hand-canvas"></canvas>
+  <div id="camera-preview-label">CAMERA</div>
+</div>
+
+<div id="hud" class="panel">
+  <div class="title"><span class="dot off" id="track-dot"></span> PARTICLE NEXUS</div>
+  <div class="row"><span>fps</span><b id="fps-val">--</b></div>
+  <div class="row"><span>particles</span><b id="count-val">--</b></div>
+  <div class="row"><span>hand</span><b id="hand-val">not detected</b></div>
+  <div class="status-line" id="status-line">Booting gesture engine…</div>
+</div>
+
+<div id="shape-name" class="panel">
+  <span class="swatch" id="shape-swatch"></span>
+  <span id="shape-label">NEBULA</span>
+  <span id="shape-index" style="opacity:.5; font-size:10px;">1/12</span>
+</div>
+
+<button id="camera-toggle">◎ ENABLE CAMERA</button>
+
+<div id="shape-dock"></div>
+
+<div id="gesture-guide" class="panel">
+  <div class="g-title">GESTURES</div>
+  <div class="g-row"><span class="k">1–5 fingers</span> quick-select first 5 shapes</div>
+  <div class="g-row"><span class="k">open hand</span> expand field</div>
+  <div class="g-row"><span class="k">fist</span> contract / implode</div>
+  <div class="g-row"><span class="k">hand L↔R</span> shift color hue</div>
+  <div class="g-row"><span class="k">swipe up</span> burst pulse</div>
+  <div class="g-row"><span class="k">swipe ↔</span> cycle any of the 12 shapes</div>
+</div>
+<button id="gesture-guide-toggle">? GESTURES</button>
+
+<div id="permission-overlay">
+  <div class="card">
+    <h2>PARTICLE NEXUS</h2>
+    <p>This particle field responds to your hand. Enable your camera to control it with gestures — open your hand to expand it, hold up fingers to change its shape, or fist to pull it inward.<br><br>No camera needed — you can also drive it with mouse drag / touch and the shape buttons.</p>
+    <button id="btn-enable-cam">ENABLE CAMERA</button>
+    <button id="btn-skip-cam">SKIP, USE TOUCH/MOUSE</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ======================================================================
+   PARTICLE NEXUS — gesture-driven three.js particle field
+   ====================================================================== */
+
+(function(){
+
+  // ---------------------------------------------------------------------
+  // 0. CONFIG
+  // ---------------------------------------------------------------------
+  const isMobile = (window.innerWidth < 760) || ('ontouchstart' in window && navigator.maxTouchPoints > 2);
+  let PARTICLE_COUNT = isMobile ? 3200 : 7200;
+  const MIN_PARTICLE_COUNT = 1400;
+
+  const PALETTE = {
+    lavender:[0.706,0.745,0.996], blue:[0.537,0.706,0.980], sapphire:[0.455,0.780,0.925],
+    mauve:[0.796,0.651,0.969], pink:[0.961,0.761,0.906], red:[0.953,0.545,0.659],
+    peach:[0.980,0.702,0.529], yellow:[0.976,0.886,0.686], green:[0.651,0.890,0.631],
+    teal:[0.580,0.886,0.835], text:[0.804,0.839,0.957]
+  };
+
+  const SHAPES = ['nebula','heart','flower','saturn','firework','torus','butterfly','star','spiral','wave','dna','globe'];
+  const SHAPE_META = {
+    nebula:    { label:'NEBULA',    icon:'✦', color:'#89b4fa' },
+    heart:     { label:'HEART',     icon:'♥', color:'#f38ba8' },
+    flower:    { label:'FLOWER',    icon:'✿', color:'#f5c2e7' },
+    saturn:    { label:'SATURN',    icon:'◎', color:'#fab387' },
+    firework:  { label:'FIREWORK',  icon:'✷', color:'#f9e2af' },
+    torus:     { label:'TORUS',     icon:'◯', color:'#74c7ec' },
+    butterfly: { label:'BUTTERFLY', icon:'🦋', color:'#cba6f7' },
+    star:      { label:'STAR',      icon:'★', color:'#f9e2af' },
+    spiral:    { label:'SPIRAL',    icon:'➰', color:'#94e2d5' },
+    wave:      { label:'WAVE',      icon:'∿', color:'#a6e3a1' },
+    dna:       { label:'DNA',       icon:'🧬', color:'#b4befe' },
+    globe:     { label:'GLOBE',     icon:'●', color:'#89b4fa' },
+  };
+
+  let currentShapeIndex = 0;
+  let expansion = 1.0;          // smoothed, driven by hand openness
+  let expansionTarget = 1.0;
+  let hueShift = 0.0;           // smoothed, driven by hand x position
+  let hueShiftTarget = 0.0;
+  let burstPulse = 0.0;         // decays over time, added to expansion
+
+  // ---------------------------------------------------------------------
+  // 1. THREE SCENE
+  // ---------------------------------------------------------------------
+  const container = document.getElementById('scene-container');
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x11111b, 0.010);
+
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 200);
+  camera.position.set(0, 0, 26);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha:false, powerPreference:'high-performance' });
+  renderer.setClearColor(0x11111b, 1);
+  let pixelRatioCap = isMobile ? 1.6 : 1.8;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioCap));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  container.appendChild(renderer.domElement);
+
+  // ---- lightweight built-in orbit/zoom controller (no external deps) ----
+  const controls = (function(){
+    const dom = renderer.domElement;
+    let theta = 0.0;         // horizontal angle
+    let phi = 1.3;           // vertical angle (radians, avoid poles)
+    let radius = 26;
+    const minRadius = 8, maxRadius = 60;
+    const minPhi = 0.35, maxPhi = Math.PI - 0.35;
+    let targetTheta = theta, targetPhi = phi, targetRadius = radius;
+    let dragging = false, lastX = 0, lastY = 0;
+    let pinchStartDist = null, pinchStartRadius = radius;
+    let userInteracting = false, interactionTimeout = null;
+
+    function markInteracting(){
+      userInteracting = true;
+      clearTimeout(interactionTimeout);
+      interactionTimeout = setTimeout(()=>{ userInteracting = false; }, 2200);
+    }
+
+    function onPointerDown(e){
+      dragging = true;
+      lastX = e.clientX; lastY = e.clientY;
+      markInteracting();
+    }
+    function onPointerMove(e){
+      if(!dragging) return;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      targetTheta -= dx * 0.0055;
+      targetPhi = THREE.MathUtils.clamp(targetPhi - dy * 0.0055, minPhi, maxPhi);
+      markInteracting();
+    }
+    function onPointerUp(){ dragging = false; }
+    function onWheel(e){
+      e.preventDefault();
+      targetRadius = THREE.MathUtils.clamp(targetRadius + e.deltaY * 0.02, minRadius, maxRadius);
+      markInteracting();
+    }
+    function touchDist(t0, t1){ return Math.hypot(t0.clientX-t1.clientX, t0.clientY-t1.clientY); }
+    function onTouchStart(e){
+      if(e.touches.length === 1){ onPointerDown(e.touches[0]); }
+      else if(e.touches.length === 2){
+        dragging = false;
+        pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+        pinchStartRadius = targetRadius;
+      }
+      markInteracting();
+    }
+    function onTouchMove(e){
+      e.preventDefault();
+      if(e.touches.length === 1 && dragging){ onPointerMove(e.touches[0]); }
+      else if(e.touches.length === 2 && pinchStartDist){
+        const d = touchDist(e.touches[0], e.touches[1]);
+        const ratio = pinchStartDist / d;
+        targetRadius = THREE.MathUtils.clamp(pinchStartRadius * ratio, minRadius, maxRadius);
+      }
+      markInteracting();
+    }
+    function onTouchEnd(e){
+      dragging = false;
+      if(e.touches.length < 2) pinchStartDist = null;
+    }
+
+    dom.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    dom.addEventListener('wheel', onWheel, { passive:false });
+    dom.addEventListener('touchstart', onTouchStart, { passive:false });
+    dom.addEventListener('touchmove', onTouchMove, { passive:false });
+    dom.addEventListener('touchend', onTouchEnd);
+
+    return {
+      autoRotate: true,
+      autoRotateSpeed: 0.0016,
+      get isUserInteracting(){ return userInteracting; },
+      update(){
+        if(this.autoRotate && !userInteracting){
+          targetTheta += this.autoRotateSpeed;
+        }
+        theta += (targetTheta - theta) * 0.08;
+        phi += (targetPhi - phi) * 0.08;
+        radius += (targetRadius - radius) * 0.08;
+        camera.position.x = radius * Math.sin(phi) * Math.sin(theta);
+        camera.position.y = radius * Math.cos(phi);
+        camera.position.z = radius * Math.sin(phi) * Math.cos(theta);
+        camera.lookAt(0,0,0);
+      }
+    };
+  })();
+
+  const particleGroup = new THREE.Group();
+  scene.add(particleGroup);
+
+  // subtle backdrop starfield for depth
+  (function makeBackdrop(){
+    const n = isMobile ? 500 : 1100;
+    const pos = new Float32Array(n*3);
+    for(let i=0;i<n;i++){
+      const r = 45 + Math.random()*40;
+      const theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
+      pos[i*3]   = r*Math.sin(phi)*Math.cos(theta);
+      pos[i*3+1] = r*Math.sin(phi)*Math.sin(theta);
+      pos[i*3+2] = r*Math.cos(phi);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    const mat = new THREE.PointsMaterial({ color:0x45475a, size:0.35, sizeAttenuation:true, transparent:true, opacity:0.55 });
+    const stars = new THREE.Points(geo, mat);
+    scene.add(stars);
+  })();
+
+  // ---------------------------------------------------------------------
+  // 2. SHADER MATERIAL
+  // ---------------------------------------------------------------------
+  const vertexShader = `
+    attribute vec3 color;
+    attribute float aSize;
+    varying vec3 vColor;
+    uniform float uPixelRatio;
+    void main(){
+      vColor = color;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * uPixelRatio * (190.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `;
+  const fragmentShader = `
+    precision mediump float;
+    varying vec3 vColor;
+    uniform float uHueShift;
+    vec3 hueRotate(vec3 c, float a){
+      const vec3 k = vec3(0.57735, 0.57735, 0.57735);
+      float cosA = cos(a);
+      return c*cosA + cross(k, c)*sin(a) + k*dot(k, c)*(1.0-cosA);
+    }
+    void main(){
+      vec2 uv = gl_PointCoord - vec2(0.5);
+      float d = length(uv);
+      if(d > 0.5) discard;
+      float alpha = smoothstep(0.5, 0.18, d);
+      vec3 col = hueRotate(vColor, uHueShift);
+      col += vec3(0.06) * smoothstep(0.22, 0.0, d); // small crisp highlight, not a wash of glow
+      gl_FragColor = vec4(col, alpha);
+    }
+  `;
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uPixelRatio: { value: Math.min(window.devicePixelRatio, pixelRatioCap) },
+      uHueShift:   { value: 0.0 }
+    },
+    vertexShader, fragmentShader,
+    transparent: true, depthWrite: false, depthTest: true, blending: THREE.NormalBlending
+  });
+
+  let geometry, points;
+  let currentPositions, homePositions, colorBuffers, sizeBuffer;
+  let shapeCache = {}; // { shapeName: { pos: Float32Array, col: Float32Array } }
+
+  // ---------------------------------------------------------------------
+  // 3. SHAPE GENERATORS  (each returns {pos: Float32Array(N*3), col: Float32Array(N*3)})
+  // ---------------------------------------------------------------------
+  function lerpColor(a,b,t){ return [ a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t ]; }
+
+  function genNebula(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const arms = 3;
+    for(let i=0;i<N;i++){
+      const t = Math.random();
+      const armIndex = i % arms;
+      const armOffset = (armIndex / arms) * Math.PI * 2;
+      const radius = t * 9.5 + 0.3;
+      const angle = radius * 0.75 + armOffset + (Math.random()-0.5)*0.5;
+      const spread = (1-t) * 1.6 + 0.15;
+      const x = Math.cos(angle) * radius + (Math.random()-0.5)*spread;
+      const z = Math.sin(angle) * radius + (Math.random()-0.5)*spread;
+      const y = (Math.random()-0.5) * (spread*1.1) * (1-t*0.6);
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const c = t < 0.25 ? lerpColor(PALETTE.yellow, PALETTE.peach, t/0.25)
+                          : lerpColor(PALETTE.sapphire, PALETTE.lavender, Math.min(1,(t-0.25)/0.75));
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genHeart(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const t = Math.random()*Math.PI*2;
+      const hx = 16*Math.pow(Math.sin(t),3);
+      const hy = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+      const fill = Math.sqrt(Math.random()); // uniform-ish area fill
+      const jitter = (Math.random()-0.5)*0.35;
+      const x = (hx/16)*7.2*fill + jitter;
+      const y = (hy/16)*7.2*fill + jitter;
+      const z = (Math.random()-0.5)*2.2*(1-fill*0.6);
+      pos[i*3]=x; pos[i*3+1]=y+0.6; pos[i*3+2]=z;
+      const c = lerpColor(PALETTE.pink, PALETTE.red, fill);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genFlower(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const k = 5; // petal frequency (odd -> k petals)
+    const centerCount = Math.floor(N*0.12);
+    for(let i=0;i<N;i++){
+      if(i < centerCount){
+        const r = Math.sqrt(Math.random())*1.0;
+        const theta = Math.random()*Math.PI*2;
+        const x = Math.cos(theta)*r, z = Math.sin(theta)*r, y = (Math.random()-0.5)*0.5 + 0.2;
+        pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+        const c = lerpColor(PALETTE.yellow, PALETTE.peach, Math.random());
+        col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+      } else {
+        const theta = Math.random()*Math.PI*2;
+        const rMax = 7.5 * Math.abs(Math.cos(k*theta));
+        const fill = Math.sqrt(Math.random());
+        const r = rMax*fill;
+        const x = Math.cos(theta)*r;
+        const z = Math.sin(theta)*r;
+        const y = Math.pow(fill,1.6)*1.8 - 0.9 + (Math.random()-0.5)*0.25;
+        pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+        const c = lerpColor(PALETTE.mauve, PALETTE.pink, fill);
+        col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+      }
+    }
+    return {pos, col};
+  }
+
+  function genSaturn(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const planetCount = Math.floor(N*0.42);
+    const tilt = 0.42;
+    for(let i=0;i<N;i++){
+      if(i < planetCount){
+        // fibonacci sphere
+        const idx = i + 0.5;
+        const phi = Math.acos(1 - 2*idx/planetCount);
+        const theta = Math.PI*(1+Math.sqrt(5))*idx;
+        const r = 4.6;
+        const x = Math.cos(theta)*Math.sin(phi)*r;
+        const y = Math.cos(phi)*r;
+        const z = Math.sin(theta)*Math.sin(phi)*r;
+        pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+        const band = (y/r+1)/2;
+        const c = lerpColor(PALETTE.peach, PALETTE.yellow, band);
+        col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+      } else {
+        const rr = 6.4 + Math.random()*2.6;
+        const theta = Math.random()*Math.PI*2;
+        let x = Math.cos(theta)*rr;
+        let z = Math.sin(theta)*rr;
+        let y = (Math.random()-0.5)*0.18;
+        // tilt ring around x-axis
+        const y2 = y*Math.cos(tilt) - z*Math.sin(tilt);
+        const z2 = y*Math.sin(tilt) + z*Math.cos(tilt);
+        pos[i*3]=x; pos[i*3+1]=y2; pos[i*3+2]=z2;
+        const c = lerpColor(PALETTE.sapphire, PALETTE.lavender, Math.random());
+        col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+      }
+    }
+    return {pos, col};
+  }
+
+  function genFirework(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const bursts = 4;
+    const burstColors = [PALETTE.red, PALETTE.yellow, PALETTE.teal, PALETTE.mauve, PALETTE.green, PALETTE.sapphire];
+    const centers = [];
+    for(let b=0;b<bursts;b++){
+      centers.push([ (Math.random()-0.5)*7, (Math.random()-0.5)*6+1, (Math.random()-0.5)*7 ]);
+    }
+    for(let i=0;i<N;i++){
+      const b = i % bursts;
+      const c0 = centers[b];
+      const theta = Math.random()*Math.PI*2;
+      const phi = Math.acos(2*Math.random()-1);
+      const shellR = (5.5 + Math.random()*1.5) * (0.5 + 0.5*Math.random());
+      const x = c0[0] + Math.sin(phi)*Math.cos(theta)*shellR;
+      const y = c0[1] + Math.cos(phi)*shellR;
+      const z = c0[2] + Math.sin(phi)*Math.sin(theta)*shellR;
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const bc = burstColors[b % burstColors.length];
+      const bright = lerpColor(bc, PALETTE.text, 0.25*Math.random());
+      col[i*3]=bright[0]; col[i*3+1]=bright[1]; col[i*3+2]=bright[2];
+    }
+    return {pos, col};
+  }
+
+  function genTorus(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const R = 5.4, r = 2.0;
+    for(let i=0;i<N;i++){
+      const u = Math.random()*Math.PI*2;
+      const v = Math.random()*Math.PI*2;
+      const rr = r * (0.85 + 0.15*Math.random());
+      const x = (R + rr*Math.cos(v)) * Math.cos(u);
+      const z = (R + rr*Math.cos(v)) * Math.sin(u);
+      const y = rr * Math.sin(v);
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const t = (Math.sin(v)+1)/2;
+      const c = lerpColor(PALETTE.sapphire, PALETTE.teal, t);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genButterfly(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const t = Math.random()*12*Math.PI;
+      const expo = Math.exp(Math.cos(t));
+      const bx = Math.sin(t) * (expo - 2*Math.cos(4*t) - Math.pow(Math.sin(t/12),5));
+      const by = Math.cos(t) * (expo - 2*Math.cos(4*t) - Math.pow(Math.sin(t/12),5));
+      const jitter = (Math.random()-0.5)*0.4;
+      const x = bx*0.85 + jitter;
+      const y = by*0.85 + jitter;
+      const z = (Math.random()-0.5)*1.3;
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const c = lerpColor(PALETTE.mauve, PALETTE.pink, Math.random());
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genStar(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const spikes = 5, outerR = 8.2, innerR = 3.2;
+    for(let i=0;i<N;i++){
+      const theta = Math.random()*Math.PI*2;
+      const spikeShape = Math.pow(Math.abs(Math.cos(spikes*theta*0.5)), 4.5);
+      const rMax = innerR + (outerR-innerR)*spikeShape;
+      const fill = Math.sqrt(Math.random());
+      const r = rMax*fill;
+      const x = Math.cos(theta)*r;
+      const z = Math.sin(theta)*r;
+      const y = (Math.random()-0.5)*0.9*(1-fill*0.4);
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const c = lerpColor(PALETTE.yellow, PALETTE.peach, fill);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genSpiral(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const turns = 4.2;
+    for(let i=0;i<N;i++){
+      const t = Math.random();
+      const angle = t*turns*Math.PI*2;
+      const radius = t*7.6 + 0.25 + (Math.random()-0.5)*0.35;
+      const x = Math.cos(angle)*radius;
+      const z = Math.sin(angle)*radius;
+      const y = (t-0.5)*11.5;
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const c = lerpColor(PALETTE.teal, PALETTE.sapphire, t);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genWave(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const x = (Math.random()-0.5)*15;
+      const z = (Math.random()-0.5)*15;
+      const y = Math.sin(x*0.5)*Math.cos(z*0.5)*2.4;
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const t = (y/2.4+1)/2;
+      const c = lerpColor(PALETTE.green, PALETTE.teal, t);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genDNA(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    const turns = 4, radius = 2.7;
+    for(let i=0;i<N;i++){
+      const strand = i % 2;
+      const t = Math.random();
+      const angle = t*turns*Math.PI*2 + (strand===0 ? 0 : Math.PI);
+      const x = Math.cos(angle)*radius;
+      const z = Math.sin(angle)*radius;
+      const y = (t-0.5)*12;
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const c = strand===0 ? lerpColor(PALETTE.lavender, PALETTE.blue, t) : lerpColor(PALETTE.pink, PALETTE.mauve, t);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  function genOrb(N){
+    const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const idx = i + 0.5;
+      const phi = Math.acos(1 - 2*idx/N);
+      const theta = Math.PI*(1+Math.sqrt(5))*idx;
+      const r = 6.0 * (0.94 + 0.06*Math.random());
+      const x = Math.cos(theta)*Math.sin(phi)*r;
+      const y = Math.cos(phi)*r;
+      const z = Math.sin(theta)*Math.sin(phi)*r;
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const t = (y/r+1)/2;
+      const c = lerpColor(PALETTE.blue, PALETTE.lavender, t);
+      col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+    }
+    return {pos, col};
+  }
+
+  const GENERATORS = {
+    nebula:genNebula, heart:genHeart, flower:genFlower, saturn:genSaturn, firework:genFirework,
+    torus:genTorus, butterfly:genButterfly, star:genStar, spiral:genSpiral, wave:genWave, dna:genDNA, globe:genOrb
+  };
+
+  function buildShapeCache(N){
+    shapeCache = {};
+    SHAPES.forEach(name => { shapeCache[name] = GENERATORS[name](N); });
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. PARTICLE SYSTEM (RE)BUILD
+  // ---------------------------------------------------------------------
+  function buildParticleSystem(N){
+    if(points){
+      particleGroup.remove(points);
+      geometry.dispose();
+    }
+    PARTICLE_COUNT = N;
+    buildShapeCache(N);
+
+    currentPositions = new Float32Array(shapeCache[SHAPES[currentShapeIndex]].pos); // start already at current shape
+    sizeBuffer = new Float32Array(N);
+    for(let i=0;i<N;i++) sizeBuffer[i] = 0.45 + Math.random()*0.65;
+
+    geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(shapeCache[SHAPES[currentShapeIndex]].col), 3));
+    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizeBuffer, 1));
+
+    points = new THREE.Points(geometry, material);
+    particleGroup.add(points);
+
+    document.getElementById('count-val').textContent = N.toLocaleString();
+  }
+
+  buildParticleSystem(PARTICLE_COUNT);
+
+  // color buffer is also lerped for smooth palette transition between shapes
+  let colorLerpFrom, colorLerpTo, colorLerpT = 1;
+
+  function setShape(index, {silent=false}={}){
+    index = ((index % SHAPES.length) + SHAPES.length) % SHAPES.length;
+    if(index === currentShapeIndex && colorLerpT >= 1) return;
+    currentShapeIndex = index;
+    const name = SHAPES[index];
+    colorLerpFrom = geometry.attributes.color.array.slice();
+    colorLerpTo = shapeCache[name].col;
+    colorLerpT = 0;
+    updateShapeUI(name);
+    if(!silent) showToast(`Shape → ${SHAPE_META[name].label}`);
+  }
+
+  function updateShapeUI(name){
+    const meta = SHAPE_META[name];
+    document.getElementById('shape-label').textContent = meta.label;
+    document.getElementById('shape-swatch').style.background = meta.color;
+    document.getElementById('shape-index').textContent = `${SHAPES.indexOf(name)+1}/${SHAPES.length}`;
+    document.querySelectorAll('.shape-btn').forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.shape === name);
+    });
+  }
+
+  // shape dock buttons
+  (function buildDock(){
+    const dock = document.getElementById('shape-dock');
+    SHAPES.forEach((name, i)=>{
+      const btn = document.createElement('button');
+      btn.className = 'shape-btn' + (i===0 ? ' active' : '');
+      btn.dataset.shape = name;
+      btn.textContent = SHAPE_META[name].icon;
+      btn.title = SHAPE_META[name].label;
+      btn.addEventListener('click', ()=> setShape(i));
+      dock.appendChild(btn);
+    });
+  })();
+
+  // ---------------------------------------------------------------------
+  // 5. TOAST
+  // ---------------------------------------------------------------------
+  let toastTimer = null;
+  function showToast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> t.classList.remove('show'), 1500);
+  }
+
+  // ---------------------------------------------------------------------
+  // 6. FPS / QUALITY SCALER
+  // ---------------------------------------------------------------------
+  let fpsHistory = [];
+  let lastFpsSampleTime = performance.now();
+  let frameCountSinceSample = 0;
+  let hasDownscaled = false;
+
+  function sampleFps(now){
+    frameCountSinceSample++;
+    if(now - lastFpsSampleTime >= 1000){
+      const fps = Math.round(frameCountSinceSample * 1000 / (now - lastFpsSampleTime));
+      frameCountSinceSample = 0;
+      lastFpsSampleTime = now;
+      fpsHistory.push(fps);
+      if(fpsHistory.length > 4) fpsHistory.shift();
+      document.getElementById('fps-val').textContent = fps;
+
+      if(!hasDownscaled && fpsHistory.length >= 3){
+        const avg = fpsHistory.reduce((a,b)=>a+b,0)/fpsHistory.length;
+        if(avg < 32 && PARTICLE_COUNT > MIN_PARTICLE_COUNT){
+          hasDownscaled = true;
+          const newCount = Math.max(MIN_PARTICLE_COUNT, Math.floor(PARTICLE_COUNT*0.55));
+          buildParticleSystem(newCount);
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.15));
+          showToast('Optimizing for smoother motion…');
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 7. HAND TRACKING (MediaPipe Hands) with graceful fallback
+  // ---------------------------------------------------------------------
+  const videoEl = document.getElementById('video-feed');
+  const previewBox = document.getElementById('camera-preview');
+  const handCanvas = document.getElementById('hand-canvas');
+  const handCtx = handCanvas.getContext('2d');
+  let handsLib = null, handsReady = false, cameraStream = null, sendLoopHandle = null;
+
+  const HAND_CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],
+    [0,17]
+  ];
+
+  function drawHandOverlay(landmarks){
+    if(handCanvas.width !== handCanvas.clientWidth || handCanvas.height !== handCanvas.clientHeight){
+      // fall back to a fixed internal resolution if metadata hasn't set one yet
+      if(!handCanvas.width) { handCanvas.width = 320; handCanvas.height = 240; }
+    }
+    const w = handCanvas.width, h = handCanvas.height;
+    handCtx.clearRect(0,0,w,h);
+    if(!landmarks) return;
+    handCtx.lineWidth = 2;
+    handCtx.strokeStyle = 'rgba(180,190,254,0.85)';
+    HAND_CONNECTIONS.forEach(([a,b])=>{
+      const p1 = landmarks[a], p2 = landmarks[b];
+      handCtx.beginPath();
+      handCtx.moveTo(p1.x*w, p1.y*h);
+      handCtx.lineTo(p2.x*w, p2.y*h);
+      handCtx.stroke();
+    });
+    landmarks.forEach((p, i)=>{
+      handCtx.beginPath();
+      handCtx.arc(p.x*w, p.y*h, i===0 ? 4.5 : 3, 0, Math.PI*2);
+      handCtx.fillStyle = i===0 ? '#f9e2af' : '#cba6f7';
+      handCtx.fill();
+    });
+  }
+  let handDetected = false;
+  let lastHandSeenAt = 0;
+  let lastWristY = null, lastWristT = null;
+  let lastWristX = null;
+  let lastBurstAt = 0, lastSwipeAt = 0;
+  let fingerHoldName = null, fingerHoldSince = 0;
+
+  function cycleShape(delta){
+    setShape(currentShapeIndex + delta);
+  }
+
+  function loadScript(src){
+    return new Promise((resolve,reject)=>{
+      const s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = ()=>resolve(true);
+      s.onerror = ()=>reject(new Error('failed to load '+src));
+      document.head.appendChild(s);
+    });
+  }
+
+  function countExtendedFingers(landmarks, handednessLabel){
+    // landmarks: 21 points, normalized [0,1] image coords (x flips w/ selfie mode already handled by mediapipe)
+    const tips = [4,8,12,16,20];
+    const pips = [3,6,10,14,18];
+    let count = 0;
+    // thumb: compare x of tip vs ip joint relative to handedness
+    const thumbTip = landmarks[4], thumbIp = landmarks[3], wrist = landmarks[0], indexMcp = landmarks[5];
+    const handSpanX = Math.abs(indexMcp.x - wrist.x) + 0.001;
+    const thumbExtended = Math.abs(thumbTip.x - wrist.x) > Math.abs(thumbIp.x - wrist.x) + handSpanX*0.15;
+    if(thumbExtended) count++;
+    for(let f=1; f<5; f++){
+      const tip = landmarks[tips[f]], pip = landmarks[pips[f]];
+      if(tip.y < pip.y - 0.02) count++; // tip above pip (in image coords, y grows downward) = extended
+    }
+    return count;
+  }
+
+  function handOpenness(landmarks){
+    const wrist = landmarks[0];
+    const tips = [4,8,12,16,20];
+    let total = 0;
+    tips.forEach(idx=>{
+      const t = landmarks[idx];
+      total += Math.hypot(t.x-wrist.x, t.y-wrist.y, (t.z||0)-(wrist.z||0));
+    });
+    const avg = total/tips.length;
+    // normalize using a reference bone length (wrist -> middle mcp)
+    const ref = Math.hypot(landmarks[9].x-wrist.x, landmarks[9].y-wrist.y) + 0.0001;
+    return avg / ref; // roughly 1.0 (curled) .. 3.0+ (wide open)
+  }
+
+  function onHandsResults(results){
+    const now = performance.now();
+    if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+      handDetected = true;
+      lastHandSeenAt = now;
+      const landmarks = results.multiHandLandmarks[0];
+      drawHandOverlay(landmarks);
+
+      // 1. finger count -> shape (debounced hold)
+      const count = countExtendedFingers(landmarks);
+      if(count >= 1 && count <= 5){
+        const name = SHAPES[count-1];
+        if(name !== fingerHoldName){ fingerHoldName = name; fingerHoldSince = now; }
+        else if(now - fingerHoldSince > 350){
+          const idx = SHAPES.indexOf(name);
+          if(idx !== currentShapeIndex) setShape(idx);
+        }
+      } else {
+        fingerHoldName = null;
+      }
+
+      // 2. openness -> expansion (fist ~1.0 -> contract, wide open ~2.6+ -> expand)
+      const openness = handOpenness(landmarks);
+      expansionTarget = THREE.MathUtils.clamp(
+        THREE.MathUtils.mapLinear(openness, 1.0, 2.6, 0.42, 1.75), 0.4, 1.9
+      );
+
+      // 3. hand x position -> hue shift
+      const wristX = landmarks[9].x; // 0..1 across frame
+      hueShiftTarget = wristX * Math.PI * 2;
+
+      // 4. swipe up -> burst, swipe left/right -> cycle full shape list
+      const wristY = landmarks[0].y;
+      const wristXpos = landmarks[0].x;
+      if(lastWristY !== null){
+        const dt = Math.max(1, now - lastWristT);
+        const vy = (wristY - lastWristY) / dt; // negative = moving up
+        const vx = lastWristX !== null ? (wristXpos - lastWristX) / dt : 0;
+        if(vy < -0.0016 && now - lastBurstAt > 900){
+          burstPulse = 1.0;
+          lastBurstAt = now;
+          showToast('✷ Burst!');
+        } else if(Math.abs(vx) > 0.0022 && now - lastSwipeAt > 700){
+          cycleShape(vx > 0 ? 1 : -1);
+          lastSwipeAt = now;
+        }
+      }
+      lastWristY = wristY; lastWristT = now; lastWristX = wristXpos;
+
+      document.getElementById('hand-val').textContent = `${count} finger${count===1?'':'s'}`;
+    } else {
+      if(now - lastHandSeenAt > 1200){
+        handDetected = false;
+        document.getElementById('hand-val').textContent = 'not detected';
+        drawHandOverlay(null);
+      }
+      lastWristY = null; lastWristX = null;
+    }
+    updateTrackDot();
+  }
+
+  function updateTrackDot(){
+    const dot = document.getElementById('track-dot');
+    dot.classList.toggle('off', !(handsReady && handDetected));
+  }
+
+  async function initHandsLib(){
+    try{
+      await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+      handsLib = new Hands({ locateFile: (f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+      handsLib.setOptions({ maxNumHands:1, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
+      handsLib.onResults(onHandsResults);
+      handsReady = true;
+      return true;
+    }catch(e){
+      console.warn('MediaPipe Hands unavailable, falling back to manual controls.', e);
+      return false;
+    }
+  }
+
+  async function enableCamera(){
+    document.getElementById('status-line').innerHTML = 'Requesting camera access…';
+    try{
+      if(!handsReady){
+        const ok = await initHandsLib();
+        if(!ok) throw new Error('hands-lib-failed');
+      }
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:'user', width:{ideal:320}, height:{ideal:240} }, audio:false
+      });
+      videoEl.srcObject = cameraStream;
+      await videoEl.play();
+      videoEl.addEventListener('loadedmetadata', ()=>{
+        handCanvas.width = videoEl.videoWidth || 320;
+        handCanvas.height = videoEl.videoHeight || 240;
+      }, { once:true });
+      previewBox.classList.add('on');
+
+      sendLoopHandle = setInterval(async ()=>{
+        if(videoEl.readyState >= 2){
+          try{ await handsLib.send({ image: videoEl }); }catch(e){ /* transient decode errors, ignore */ }
+        }
+      }, 90);
+
+      document.getElementById('camera-toggle').textContent = '◉ CAMERA ON';
+      document.getElementById('camera-toggle').classList.add('active');
+      document.getElementById('status-line').innerHTML = 'Show your hand to the camera — try opening your palm, or holding up fingers.';
+      controls.autoRotate = false;
+      return true;
+    }catch(e){
+      console.warn('Camera/hand tracking unavailable:', e);
+      document.getElementById('status-line').innerHTML =
+        '<b>Camera unavailable.</b> Using mouse / touch drag and the shape buttons instead.';
+      document.getElementById('track-dot').classList.add('off');
+      previewBox.classList.remove('on');
+      return false;
+    }
+  }
+
+  function disableCamera(){
+    if(sendLoopHandle) clearInterval(sendLoopHandle);
+    if(cameraStream) cameraStream.getTracks().forEach(t=>t.stop());
+    cameraStream = null;
+    handDetected = false;
+    previewBox.classList.remove('on');
+    drawHandOverlay(null);
+    document.getElementById('camera-toggle').textContent = '◎ ENABLE CAMERA';
+    document.getElementById('camera-toggle').classList.remove('active');
+    document.getElementById('hand-val').textContent = 'not detected';
+    document.getElementById('status-line').innerHTML = 'Camera off. Drag to rotate, pinch/scroll to zoom, or tap a shape below.';
+    updateTrackDot();
+    controls.autoRotate = true;
+  }
+
+  document.getElementById('camera-toggle').addEventListener('click', ()=>{
+    if(cameraStream) disableCamera(); else enableCamera();
+  });
+
+  // permission overlay wiring
+  const overlay = document.getElementById('permission-overlay');
+  document.getElementById('btn-enable-cam').addEventListener('click', async ()=>{
+    overlay.style.display = 'none';
+    await enableCamera();
+  });
+  document.getElementById('btn-skip-cam').addEventListener('click', ()=>{
+    overlay.style.display = 'none';
+    document.getElementById('status-line').innerHTML = 'Manual mode. Drag to rotate, scroll/pinch to zoom, tap shapes below.';
+  });
+
+  // mobile gesture-guide toggle
+  document.getElementById('gesture-guide-toggle').addEventListener('click', ()=>{
+    document.getElementById('gesture-guide').classList.toggle('mobile-open');
+  });
+
+  // ---------------------------------------------------------------------
+  // 8. ANIMATION LOOP
+  // ---------------------------------------------------------------------
+  const clock = new THREE.Clock();
+  updateShapeUI(SHAPES[currentShapeIndex]);
+
+  function tick(){
+    requestAnimationFrame(tick);
+    const now = performance.now();
+    const dt = Math.min(0.05, clock.getDelta());
+
+    // smooth expansion / hue / burst decay
+    expansion += (expansionTarget - expansion) * Math.min(1, dt*3.2);
+    hueShift += (hueShiftTarget - hueShift) * Math.min(1, dt*2.5);
+    burstPulse += (0 - burstPulse) * Math.min(1, dt*1.6);
+    material.uniforms.uHueShift.value = hueShift;
+
+    // color cross-fade between shapes
+    if(colorLerpT < 1 && colorLerpFrom && colorLerpTo){
+      colorLerpT = Math.min(1, colorLerpT + dt*1.8);
+      const colArr = geometry.attributes.color.array;
+      for(let i=0;i<colArr.length;i++){
+        colArr[i] = colorLerpFrom[i] + (colorLerpTo[i]-colorLerpFrom[i])*colorLerpT;
+      }
+      geometry.attributes.color.needsUpdate = true;
+    }
+
+    // position morph toward target shape * expansion(+burst)
+    const targetShape = shapeCache[SHAPES[currentShapeIndex]].pos;
+    const scale = expansion + burstPulse*0.9;
+    const posArr = geometry.attributes.position.array;
+    const morphSpeed = Math.min(1, dt*3.0);
+    for(let i=0;i<posArr.length;i++){
+      const t = targetShape[i]*scale;
+      posArr[i] += (t - posArr[i]) * morphSpeed;
+    }
+    geometry.attributes.position.needsUpdate = true;
+
+    // gentle idle rotation of the particle field itself
+    particleGroup.rotation.y += dt * 0.12;
+    particleGroup.rotation.x = Math.sin(now*0.00015) * 0.05;
+
+    controls.update();
+    renderer.render(scene, camera);
+    sampleFps(now);
+  }
+  tick();
+
+  // ---------------------------------------------------------------------
+  // 9. RESIZE
+  // ---------------------------------------------------------------------
+  window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // number keys 1-5 for desktop testing convenience
+  window.addEventListener('keydown', (e)=>{
+    const n = parseInt(e.key,10);
+    if(n>=1 && n<=5) setShape(n-1);
+  });
+
+})();
+</script>
+</body>
+</html>
