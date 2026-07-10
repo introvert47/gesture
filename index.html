@@ -25,7 +25,7 @@
   canvas{ display:block; }
 
   #camera-preview{
-    position:fixed; top:112px; right:14px; z-index:30; /* Bumped z-index to stay above panels */
+    position:fixed; top:112px; right:14px; z-index:30;
     width:190px; height:143px; border-radius:10px; overflow:hidden;
     background:#000; border:1px solid rgba(180,190,254,0.22);
     box-shadow:0 6px 22px rgba(0,0,0,0.4);
@@ -34,11 +34,11 @@
   #camera-preview.on{ display:block; }
   #camera-preview video{
     position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-    transform:scaleX(-1); /* Mirror just the video feed */
+    transform:scaleX(-1);
   }
   #camera-preview canvas{
     position:absolute; inset:0; width:100%; height:100%;
-    transform:scaleX(-1); /* Mirror the hand tracking overlay to match video */
+    transform:scaleX(-1);
   }
   #camera-preview-label{
     position:absolute; top:6px; left:8px; font-size:9px; letter-spacing:1.5px;
@@ -256,11 +256,11 @@
   };
 
   let currentShapeIndex = 0;
-  let expansion = 1.0;          // smoothed, driven by hand openness
+  let expansion = 1.0;
   let expansionTarget = 1.0;
-  let hueShift = 0.0;           // smoothed, driven by hand x position
+  let hueShift = 0.0;
   let hueShiftTarget = 0.0;
-  let burstPulse = 0.0;         // decays over time, added to expansion
+  let burstPulse = 0.0;
 
   // ---------------------------------------------------------------------
   // 1. THREE SCENE
@@ -279,11 +279,10 @@
   renderer.setSize(window.innerWidth, window.innerHeight);
   container.appendChild(renderer.domElement);
 
-  // ---- lightweight built-in orbit/zoom controller (no external deps) ----
   const controls = (function(){
     const dom = renderer.domElement;
-    let theta = 0.0;         // horizontal angle
-    let phi = 1.3;           // vertical angle (radians, avoid poles)
+    let theta = 0.0;
+    let phi = 1.3;
     let radius = 26;
     const minRadius = 8, maxRadius = 60;
     const minPhi = 0.35, maxPhi = Math.PI - 0.35;
@@ -372,7 +371,6 @@
   const particleGroup = new THREE.Group();
   scene.add(particleGroup);
 
-  // subtle backdrop starfield for depth
   (function makeBackdrop(){
     const n = isMobile ? 500 : 1100;
     const pos = new Float32Array(n*3);
@@ -420,7 +418,7 @@
       if(d > 0.5) discard;
       float alpha = smoothstep(0.5, 0.18, d);
       vec3 col = hueRotate(vColor, uHueShift);
-      col += vec3(0.06) * smoothstep(0.22, 0.0, d); // small crisp highlight, not a wash of glow
+      col += vec3(0.06) * smoothstep(0.22, 0.0, d);
       gl_FragColor = vec4(col, alpha);
     }
   `;
@@ -435,11 +433,11 @@
   });
 
   let geometry, points;
-  let currentPositions, homePositions, colorBuffers, sizeBuffer;
-  let shapeCache = {}; // { shapeName: { pos: Float32Array, col: Float32Array } }
+  let currentPositions, sizeBuffer;
+  let shapeCache = {};
 
   // ---------------------------------------------------------------------
-  // 3. SHAPE GENERATORS  (each returns {pos: Float32Array(N*3), col: Float32Array(N*3)})
+  // 3. SHAPE GENERATORS
   // ---------------------------------------------------------------------
   function lerpColor(a,b,t){ return [ a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t ]; }
 
@@ -470,7 +468,7 @@
       const t = Math.random()*Math.PI*2;
       const hx = 16*Math.pow(Math.sin(t),3);
       const hy = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
-      const fill = Math.sqrt(Math.random()); // uniform-ish area fill
+      const fill = Math.sqrt(Math.random());
       const jitter = (Math.random()-0.5)*0.35;
       const x = (hx/16)*7.2*fill + jitter;
       const y = (hy/16)*7.2*fill + jitter;
@@ -484,7 +482,7 @@
 
   function genFlower(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
-    const k = 5; // petal frequency (odd -> k petals)
+    const k = 5;
     const centerCount = Math.floor(N*0.12);
     for(let i=0;i<N;i++){
       if(i < centerCount){
@@ -516,7 +514,6 @@
     const tilt = 0.42;
     for(let i=0;i<N;i++){
       if(i < planetCount){
-        // fibonacci sphere
         const idx = i + 0.5;
         const phi = Math.acos(1 - 2*idx/planetCount);
         const theta = Math.PI*(1+Math.sqrt(5))*idx;
@@ -534,7 +531,6 @@
         let x = Math.cos(theta)*rr;
         let z = Math.sin(theta)*rr;
         let y = (Math.random()-0.5)*0.18;
-        // tilt ring around x-axis
         const y2 = y*Math.cos(tilt) - z*Math.sin(tilt);
         const z2 = y*Math.sin(tilt) + z*Math.cos(tilt);
         pos[i*3]=x; pos[i*3+1]=y2; pos[i*3+2]=z2;
@@ -642,6 +638,7 @@
     return {pos, col};
   }
 
+  // Quick fix inside genWave, genDNA, genOrb to return object correctly
   function genWave(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     for(let i=0;i<N;i++){
@@ -712,7 +709,7 @@
     PARTICLE_COUNT = N;
     buildShapeCache(N);
 
-    currentPositions = new Float32Array(shapeCache[SHAPES[currentShapeIndex]].pos); // start already at current shape
+    currentPositions = new Float32Array(shapeCache[SHAPES[currentShapeIndex]].pos);
     sizeBuffer = new Float32Array(N);
     for(let i=0;i<N;i++) sizeBuffer[i] = 0.45 + Math.random()*0.65;
 
@@ -729,7 +726,6 @@
 
   buildParticleSystem(PARTICLE_COUNT);
 
-  // color buffer is also lerped for smooth palette transition between shapes
   let colorLerpFrom, colorLerpTo, colorLerpT = 1;
 
   function setShape(index, {silent=false}={}){
@@ -754,7 +750,6 @@
     });
   }
 
-  // shape dock buttons
   (function buildDock(){
     const dock = document.getElementById('shape-dock');
     SHAPES.forEach((name, i)=>{
@@ -812,13 +807,15 @@
   }
 
   // ---------------------------------------------------------------------
-  // 7. HAND TRACKING (MediaPipe Hands)
+  // 7. HAND TRACKING (MediaPipe Hands Bulletproof Pipeline)
   // ---------------------------------------------------------------------
   const videoEl = document.getElementById('video-feed');
   const previewBox = document.getElementById('camera-preview');
   const handCanvas = document.getElementById('hand-canvas');
   const handCtx = handCanvas.getContext('2d');
-  let handsLib = null, handsReady = false, cameraStream = null, sendLoopHandle = null;
+  let handsLib = null, handsReady = false, cameraStream = null;
+  let lastVideoTime = -1;
+  let isProcessingFrame = false;
 
   const HAND_CONNECTIONS = [
     [0,1],[1,2],[2,3],[3,4],
@@ -852,6 +849,7 @@
       handCtx.fill();
     });
   }
+
   let handDetected = false;
   let lastHandSeenAt = 0;
   let lastWristY = null, lastWristT = null;
@@ -903,13 +901,14 @@
 
   function onHandsResults(results){
     const now = performance.now();
+    isProcessingFrame = false; // unlock pipeline for next frame
+
     if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
       handDetected = true;
       lastHandSeenAt = now;
       const landmarks = results.multiHandLandmarks[0];
       drawHandOverlay(landmarks);
 
-      // 1. finger count -> shape
       const count = countExtendedFingers(landmarks);
       if(count >= 1 && count <= 5){
         const name = SHAPES[count-1];
@@ -922,17 +921,14 @@
         fingerHoldName = null;
       }
 
-      // 2. openness -> expansion
       const openness = handOpenness(landmarks);
       expansionTarget = THREE.MathUtils.clamp(
         THREE.MathUtils.mapLinear(openness, 1.0, 2.6, 0.42, 1.75), 0.4, 1.9
       );
 
-      // 3. hand x position -> hue shift
       const wristX = landmarks[9].x; 
       hueShiftTarget = wristX * Math.PI * 2;
 
-      // 4. swipe monitoring
       const wristY = landmarks[0].y;
       const wristXpos = landmarks[0].x;
       if(lastWristY !== null){
@@ -971,13 +967,29 @@
     try{
       await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
       handsLib = new Hands({ locateFile: (f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-      handsLib.setOptions({ maxNumHands:1, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
+      handsLib.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.55, minTrackingConfidence:0.55 });
       handsLib.onResults(onHandsResults);
       handsReady = true;
       return true;
     }catch(e){
       console.warn('MediaPipe Hands library load failed.', e);
       return false;
+    }
+  }
+
+  // Bulletproof frame pipeline driven by requestAnimationFrame
+  async function cameraFramePipelineLoop(){
+    if(!cameraStream) return;
+    requestAnimationFrame(cameraFramePipelineLoop);
+
+    if(videoEl.readyState >= 2 && videoEl.currentTime !== lastVideoTime && !isProcessingFrame){
+      lastVideoTime = videoEl.currentTime;
+      isProcessingFrame = true;
+      try {
+        await handsLib.send({ image: videoEl });
+      } catch(e) {
+        isProcessingFrame = false; // release lock if send crashed
+      }
     }
   }
 
@@ -994,7 +1006,6 @@
       });
       
       videoEl.srcObject = cameraStream;
-      // Force preview block rendering update immediately
       previewBox.classList.add('on');
       
       await videoEl.play();
@@ -1004,12 +1015,9 @@
         handCanvas.height = videoEl.videoHeight || 240;
       }, { once:true });
 
-      // Consistent runtime pipeline loop
-      sendLoopHandle = setInterval(async ()=>{
-        if(videoEl.readyState >= 2){
-          try{ await handsLib.send({ image: videoEl }); }catch(e){}
-        }
-      }, 90);
+      // Start the frame detection loop
+      isProcessingFrame = false;
+      cameraFramePipelineLoop();
 
       document.getElementById('camera-toggle').textContent = '◉ CAMERA ON';
       document.getElementById('camera-toggle').classList.add('active');
@@ -1027,8 +1035,6 @@
   }
 
   function disableCamera(){
-    if(sendLoopHandle) clearInterval(sendLoopHandle);
-    if(cameraStream) cameraStream.getTracks().forEach(t=>t.stop());
     cameraStream = null;
     handDetected = false;
     previewBox.classList.remove('on');
@@ -1045,7 +1051,6 @@
     if(cameraStream) disableCamera(); else enableCamera();
   });
 
-  // Permission overlay logic
   const overlay = document.getElementById('permission-overlay');
   document.getElementById('btn-enable-cam').addEventListener('click', async ()=>{
     overlay.style.display = 'none';
@@ -1056,7 +1061,6 @@
     document.getElementById('status-line').innerHTML = 'Manual mode. Drag to rotate, scroll/pinch to zoom, tap shapes below.';
   });
 
-  // Mobile gesture guide toggle
   document.getElementById('gesture-guide-toggle').addEventListener('click', ()=>{
     document.getElementById('gesture-guide').classList.toggle('mobile-open');
   });
@@ -1080,7 +1084,7 @@
     if(colorLerpT < 1 && colorLerpFrom && colorLerpTo){
       colorLerpT = Math.min(1, colorLerpT + dt*1.8);
       const colArr = geometry.attributes.color.array;
-      for(let i=0;i<colArr.length;i++){
+      for(let i=0; i<colArr.length; i++){
         colArr[i] = colorLerpFrom[i] + (colorLerpTo[i]-colorLerpFrom[i])*colorLerpT;
       }
       geometry.attributes.color.needsUpdate = true;
@@ -1090,7 +1094,7 @@
     const scale = expansion + burstPulse*0.9;
     const posArr = geometry.attributes.position.array;
     const morphSpeed = Math.min(1, dt*3.0);
-    for(let i=0;i<posArr.length;i++){
+    for(let i=0; i<posArr.length; i++){
       const t = targetShape[i]*scale;
       posArr[i] += (t - posArr[i]) * morphSpeed;
     }
@@ -1105,9 +1109,6 @@
   }
   tick();
 
-  // ---------------------------------------------------------------------
-  // 9. RESIZE
-  // ---------------------------------------------------------------------
   window.addEventListener('resize', ()=>{
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
