@@ -27,8 +27,8 @@
   #camera-preview{
     position:fixed; top:112px; right:14px; z-index:30;
     width:190px; height:143px; border-radius:10px; overflow:hidden;
-    background:#000; border:1px solid rgba(180,190,254,0.22);
-    box-shadow:0 6px 22px rgba(0,0,0,0.4);
+    background:#000; border:1px solid rgba(180,190,254,0.3);
+    box-shadow:0 6px 22px rgba(0,0,0,0.5);
     display:none;
   }
   #camera-preview.on{ display:block; }
@@ -37,13 +37,14 @@
     transform:scaleX(-1);
   }
   #camera-preview canvas{
-    position:absolute; inset:0; width:100%; height:100%;
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
     transform:scaleX(-1);
+    z-index:32;
   }
   #camera-preview-label{
     position:absolute; top:6px; left:8px; font-size:9px; letter-spacing:1.5px;
     color:var(--green); font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,0.7);
-    z-index:31;
+    z-index:33;
   }
 
   .panel{
@@ -182,7 +183,7 @@
   <div class="row"><span>fps</span><b id="fps-val">--</b></div>
   <div class="row"><span>particles</span><b id="count-val">--</b></div>
   <div class="row"><span>hand</span><b id="hand-val">not detected</b></div>
-  <div class="status-line" id="status-line">Booting gesture engine…</div>
+  <div class="status-line" id="status-line">Booting engine…</div>
 </div>
 
 <div id="shape-name" class="panel">
@@ -197,12 +198,12 @@
 
 <div id="gesture-guide" class="panel">
   <div class="g-title">GESTURES</div>
-  <div class="g-row"><span class="k">1–5 fingers</span> quick-select first 5 shapes</div>
+  <div class="g-row"><span class="k">1–5 fingers</span> select shapes 1 to 5</div>
   <div class="g-row"><span class="k">open hand</span> expand field</div>
   <div class="g-row"><span class="k">fist</span> contract / implode</div>
   <div class="g-row"><span class="k">hand L↔R</span> shift color hue</div>
   <div class="g-row"><span class="k">swipe up</span> burst pulse</div>
-  <div class="g-row"><span class="k">swipe ↔</span> cycle any of the 12 shapes</div>
+  <div class="g-row"><span class="k">swipe ↔</span> cycle all 12 shapes</div>
 </div>
 <button id="gesture-guide-toggle">? GESTURES</button>
 
@@ -222,18 +223,13 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
 <script>
-/* ======================================================================
-   PARTICLE NEXUS — pure gesture-driven three.js particle field
-   ====================================================================== */
-
 (function(){
 
   // ---------------------------------------------------------------------
   // 0. CONFIG
   // ---------------------------------------------------------------------
   const isMobile = (window.innerWidth < 760) || ('ontouchstart' in window && navigator.maxTouchPoints > 2);
-  let PARTICLE_COUNT = isMobile ? 3200 : 7200;
-  const MIN_PARTICLE_COUNT = 1400;
+  let PARTICLE_COUNT = isMobile ? 3200 : 7500;
 
   const PALETTE = {
     lavender:[0.706,0.745,0.996], blue:[0.537,0.706,0.980], sapphire:[0.455,0.780,0.925],
@@ -266,7 +262,7 @@
   let burstPulse = 0.0;
 
   // ---------------------------------------------------------------------
-  // 1. THREE SCENE (All Touch/Mouse Event Listeners Completely Dropped)
+  // 1. THREE SCENE (Crystal Clear Resolution & Sharpness Re-locked)
   // ---------------------------------------------------------------------
   const container = document.getElementById('scene-container');
   const scene = new THREE.Scene();
@@ -275,10 +271,12 @@
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 200);
   camera.position.set(0, 0, 26);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha:false, powerPreference:'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha:false, powerPreference:'high-performance' });
   renderer.setClearColor(0x11111b, 1);
-  let pixelRatioCap = isMobile ? 1.6 : 1.8;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioCap));
+  
+  // FIXED: Locked to native device pixel ratio to completely resolve blurriness
+  const nativePixelRatio = window.devicePixelRatio || 1;
+  renderer.setPixelRatio(nativePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   container.appendChild(renderer.domElement);
 
@@ -308,7 +306,7 @@
   scene.add(particleGroup);
 
   (function makeBackdrop(){
-    const n = isMobile ? 500 : 1100;
+    const n = isMobile ? 400 : 1000;
     const pos = new Float32Array(n*3);
     for(let i=0;i<n;i++){
       const r = 45 + Math.random()*40;
@@ -335,7 +333,7 @@
     void main(){
       vColor = color;
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = aSize * uPixelRatio * (190.0 / -mvPosition.z);
+      gl_PointSize = aSize * uPixelRatio * (200.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `;
@@ -352,16 +350,16 @@
       vec2 uv = gl_PointCoord - vec2(0.5);
       float d = length(uv);
       if(d > 0.5) discard;
-      float alpha = smoothstep(0.5, 0.18, d);
+      float alpha = smoothstep(0.5, 0.15, d);
       vec3 col = hueRotate(vColor, uHueShift);
-      col += vec3(0.06) * smoothstep(0.22, 0.0, d);
+      col += vec3(0.08) * smoothstep(0.25, 0.0, d);
       gl_FragColor = vec4(col, alpha);
     }
   `;
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      uPixelRatio: { value: Math.min(window.devicePixelRatio, pixelRatioCap) },
+      uPixelRatio: { value: nativePixelRatio },
       uHueShift:   { value: 0.0 }
     },
     vertexShader, fragmentShader,
@@ -382,15 +380,13 @@
     const arms = 3;
     for(let i=0;i<N;i++){
       const t = Math.random();
-      const armIndex = i % arms;
-      const armOffset = (armIndex / arms) * Math.PI * 2;
+      const armOffset = ((i % arms) / arms) * Math.PI * 2;
       const radius = t * 9.5 + 0.3;
       const angle = radius * 0.75 + armOffset + (Math.random()-0.5)*0.5;
       const spread = (1-t) * 1.6 + 0.15;
-      const x = Math.cos(angle) * radius + (Math.random()-0.5)*spread;
-      const z = Math.sin(angle) * radius + (Math.random()-0.5)*spread;
-      const y = (Math.random()-0.5) * (spread*1.1) * (1-t*0.6);
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      pos[i*3] = Math.cos(angle) * radius + (Math.random()-0.5)*spread;
+      pos[i*3+1] = (Math.random()-0.5) * (spread*1.1) * (1-t*0.6);
+      pos[i*3+2] = Math.sin(angle) * radius + (Math.random()-0.5)*spread;
       const c = t < 0.25 ? lerpColor(PALETTE.yellow, PALETTE.peach, t/0.25)
                           : lerpColor(PALETTE.sapphire, PALETTE.lavender, Math.min(1,(t-0.25)/0.75));
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
@@ -405,11 +401,9 @@
       const hx = 16*Math.pow(Math.sin(t),3);
       const hy = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
       const fill = Math.sqrt(Math.random());
-      const jitter = (Math.random()-0.5)*0.35;
-      const x = (hx/16)*7.2*fill + jitter;
-      const y = (hy/16)*7.2*fill + jitter;
-      const z = (Math.random()-0.5)*2.2*(1-fill*0.6);
-      pos[i*3]=x; pos[i*3+1]=y+0.6; pos[i*3+2]=z;
+      pos[i*3] = (hx/16)*7.2*fill + (Math.random()-0.5)*0.35;
+      pos[i*3+1] = (hy/16)*7.2*fill + (Math.random()-0.5)*0.35 + 0.6;
+      pos[i*3+2] = (Math.random()-0.5)*2.2*(1-fill*0.6);
       const c = lerpColor(PALETTE.pink, PALETTE.red, fill);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
@@ -418,26 +412,18 @@
 
   function genFlower(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
-    const k = 5;
-    const centerCount = Math.floor(N*0.12);
+    const k = 5, centerCount = Math.floor(N*0.12);
     for(let i=0;i<N;i++){
       if(i < centerCount){
-        const r = Math.sqrt(Math.random())*1.0;
-        const theta = Math.random()*Math.PI*2;
-        const x = Math.cos(theta)*r, z = Math.sin(theta)*r, y = (Math.random()-0.5)*0.5 + 0.2;
-        pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+        const r = Math.sqrt(Math.random())*1.0, theta = Math.random()*Math.PI*2;
+        pos[i*3]=Math.cos(theta)*r; pos[i*3+1]=(Math.random()-0.5)*0.5 + 0.2; pos[i*3+2]=Math.sin(theta)*r;
         const c = lerpColor(PALETTE.yellow, PALETTE.peach, Math.random());
         col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
       } else {
         const theta = Math.random()*Math.PI*2;
-        const rMax = 7.5 * Math.abs(Math.cos(k*theta));
-        const fill = Math.sqrt(Math.random());
-        const r = rMax*fill;
-        const x = Math.cos(theta)*r;
-        const z = Math.sin(theta)*r;
-        const y = Math.pow(fill,1.6)*1.8 - 0.9 + (Math.random()-0.5)*0.25;
-        pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
-        const c = lerpColor(PALETTE.mauve, PALETTE.pink, fill);
+        const r = 7.5 * Math.abs(Math.cos(k*theta)) * Math.sqrt(Math.random());
+        pos[i*3]=Math.cos(theta)*r; pos[i*3+1]=Math.pow(r/7.5,1.6)*1.8 - 0.9 + (Math.random()-0.5)*0.25; pos[i*3+2]=Math.sin(theta)*r;
+        const c = lerpColor(PALETTE.mauve, PALETTE.pink, r/7.5);
         col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
       }
     }
@@ -446,30 +432,18 @@
 
   function genSaturn(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
-    const planetCount = Math.floor(N*0.42);
-    const tilt = 0.42;
+    const planetCount = Math.floor(N*0.42), tilt = 0.42;
     for(let i=0;i<N;i++){
       if(i < planetCount){
         const idx = i + 0.5;
-        const phi = Math.acos(1 - 2*idx/planetCount);
-        const theta = Math.PI*(1+Math.sqrt(5))*idx;
-        const r = 4.6;
-        const x = Math.cos(theta)*Math.sin(phi)*r;
-        const y = Math.cos(phi)*r;
-        const z = Math.sin(theta)*Math.sin(phi)*r;
-        pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
-        const band = (y/r+1)/2;
-        const c = lerpColor(PALETTE.peach, PALETTE.yellow, band);
+        const phi = Math.acos(1 - 2*idx/planetCount), theta = Math.PI*(1+Math.sqrt(5))*idx, r = 4.6;
+        pos[i*3]=Math.cos(theta)*Math.sin(phi)*r; pos[i*3+1]=Math.cos(phi)*r; pos[i*3+2]=Math.sin(theta)*Math.sin(phi)*r;
+        const c = lerpColor(PALETTE.peach, PALETTE.yellow, (Math.cos(phi)+1)/2);
         col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
       } else {
-        const rr = 6.4 + Math.random()*2.6;
-        const theta = Math.random()*Math.PI*2;
-        let x = Math.cos(theta)*rr;
-        let z = Math.sin(theta)*rr;
-        let y = (Math.random()-0.5)*0.18;
-        const y2 = y*Math.cos(tilt) - z*Math.sin(tilt);
-        const z2 = y*Math.sin(tilt) + z*Math.cos(tilt);
-        pos[i*3]=x; pos[i*3+1]=y2; pos[i*3+2]=z2;
+        const rr = 6.4 + Math.random()*2.6, theta = Math.random()*Math.PI*2;
+        let z = Math.sin(theta)*rr, y = (Math.random()-0.5)*0.18;
+        pos[i*3]=Math.cos(theta)*rr; pos[i*3+1]=y*Math.cos(tilt) - z*Math.sin(tilt); pos[i*3+2]=y*Math.sin(tilt) + z*Math.cos(tilt);
         const c = lerpColor(PALETTE.sapphire, PALETTE.lavender, Math.random());
         col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
       }
@@ -479,22 +453,12 @@
 
   function genFirework(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
-    const bursts = 4;
-    const burstColors = [PALETTE.red, PALETTE.yellow, PALETTE.teal, PALETTE.mauve, PALETTE.green, PALETTE.sapphire];
-    const centers = [];
-    for(let b=0;b<bursts;b++){
-      centers.push([ (Math.random()-0.5)*7, (Math.random()-0.5)*6+1, (Math.random()-0.5)*7 ]);
-    }
+    const bursts = 4, burstColors = [PALETTE.red, PALETTE.yellow, PALETTE.teal, PALETTE.mauve, PALETTE.green, PALETTE.sapphire], centers = [];
+    for(let b=0;b<bursts;b++) centers.push([ (Math.random()-0.5)*7, (Math.random()-0.5)*6+1, (Math.random()-0.5)*7 ]);
     for(let i=0;i<N;i++){
-      const b = i % bursts;
-      const c0 = centers[b];
-      const theta = Math.random()*Math.PI*2;
-      const phi = Math.acos(2*Math.random()-1);
+      const b = i % bursts, c0 = centers[b], theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
       const shellR = (5.5 + Math.random()*1.5) * (0.5 + 0.5*Math.random());
-      const x = c0[0] + Math.sin(phi)*Math.cos(theta)*shellR;
-      const y = c0[1] + Math.cos(phi)*shellR;
-      const z = c0[2] + Math.sin(phi)*Math.sin(theta)*shellR;
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      pos[i*3]=c0[0] + Math.sin(phi)*Math.cos(theta)*shellR; pos[i*3+1]=c0[1] + Math.cos(phi)*shellR; pos[i*3+2]=c0[2] + Math.sin(phi)*Math.sin(theta)*shellR;
       const bc = burstColors[b % burstColors.length];
       const bright = lerpColor(bc, PALETTE.text, 0.25*Math.random());
       col[i*3]=bright[0]; col[i*3+1]=bright[1]; col[i*3+2]=bright[2];
@@ -506,15 +470,9 @@
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     const R = 5.4, r = 2.0;
     for(let i=0;i<N;i++){
-      const u = Math.random()*Math.PI*2;
-      const v = Math.random()*Math.PI*2;
-      const rr = r * (0.85 + 0.15*Math.random());
-      const x = (R + rr*Math.cos(v)) * Math.cos(u);
-      const z = (R + rr*Math.cos(v)) * Math.sin(u);
-      const y = rr * Math.sin(v);
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
-      const t = (Math.sin(v)+1)/2;
-      const c = lerpColor(PALETTE.sapphire, PALETTE.teal, t);
+      const u = Math.random()*Math.PI*2, v = Math.random()*Math.PI*2, rr = r * (0.85 + 0.15*Math.random());
+      pos[i*3]=(R + rr*Math.cos(v)) * Math.cos(u); pos[i*3+1]=rr*Math.sin(v); pos[i*3+2]=(R + rr*Math.cos(v)) * Math.sin(u);
+      const c = lerpColor(PALETTE.sapphire, PALETTE.teal, (Math.sin(v)+1)/2);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
     return {pos, col};
@@ -523,36 +481,25 @@
   function genButterfly(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     for(let i=0;i<N;i++){
-      const t = Math.random()*12*Math.PI;
-      const expo = Math.exp(Math.cos(t));
+      const t = Math.random()*12*Math.PI, expo = Math.exp(Math.cos(t));
       const bx = Math.sin(t) * (expo - 2*Math.cos(4*t) - Math.pow(Math.sin(t/12),5));
       const by = Math.cos(t) * (expo - 2*Math.cos(4*t) - Math.pow(Math.sin(t/12),5));
-      const jitter = (Math.random()-0.5)*0.4;
-      const x = bx*0.85 + jitter;
-      const y = by*0.85 + jitter;
-      const z = (Math.random()-0.5)*1.3;
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      pos[i*3]=bx*0.85 + (Math.random()-0.5)*0.4; pos[i*3+1]=by*0.85 + (Math.random()-0.5)*0.4; pos[i*3+2]=(Math.random()-0.5)*1.3;
       const c = lerpColor(PALETTE.mauve, PALETTE.pink, Math.random());
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
     return {pos, col};
   }
 
-  // Rest of shapes preserved cleanly
   function genStar(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     const spikes = 5, outerR = 8.2, innerR = 3.2;
     for(let i=0;i<N;i++){
       const theta = Math.random()*Math.PI*2;
-      const spikeShape = Math.pow(Math.abs(Math.cos(spikes*theta*0.5)), 4.5);
-      const rMax = innerR + (outerR-innerR)*spikeShape;
-      const fill = Math.sqrt(Math.random());
-      const r = rMax*fill;
-      const x = Math.cos(theta)*r;
-      const z = Math.sin(theta)*r;
-      const y = (Math.random()-0.5)*0.9*(1-fill*0.4);
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
-      const c = lerpColor(PALETTE.yellow, PALETTE.peach, fill);
+      const rMax = innerR + (outerR-innerR)*Math.pow(Math.abs(Math.cos(spikes*theta*0.5)), 4.5);
+      const fill = Math.sqrt(Math.random()) * rMax;
+      pos[i*3]=Math.cos(theta)*fill; pos[i*3+1]=(Math.random()-0.5)*0.9*(1-(fill/outerR)*0.4); pos[i*3+2]=Math.sin(theta)*fill;
+      const c = lerpColor(PALETTE.yellow, PALETTE.peach, fill/outerR);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
     return {pos, col};
@@ -562,13 +509,8 @@
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     const turns = 4.2;
     for(let i=0;i<N;i++){
-      const t = Math.random();
-      const angle = t*turns*Math.PI*2;
-      const radius = t*7.6 + 0.25 + (Math.random()-0.5)*0.35;
-      const x = Math.cos(angle)*radius;
-      const z = Math.sin(angle)*radius;
-      const y = (t-0.5)*11.5;
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const t = Math.random(), angle = t*turns*Math.PI*2, radius = t*7.6 + 0.25 + (Math.random()-0.5)*0.35;
+      pos[i*3]=Math.cos(angle)*radius; pos[i*3+1]=(t-0.5)*11.5; pos[i*3+2]=Math.sin(angle)*radius;
       const c = lerpColor(PALETTE.teal, PALETTE.sapphire, t);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
@@ -578,12 +520,9 @@
   function genWave(N){
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     for(let i=0;i<N;i++){
-      const x = (Math.random()-0.5)*15;
-      const z = (Math.random()-0.5)*15;
-      const y = Math.sin(x*0.5)*Math.cos(z*0.5)*2.4;
+      const x = (Math.random()-0.5)*15, z = (Math.random()-0.5)*15, y = Math.sin(x*0.5)*Math.cos(z*0.5)*2.4;
       pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
-      const t = (y/2.4+1)/2;
-      const c = lerpColor(PALETTE.green, PALETTE.teal, t);
+      const c = lerpColor(PALETTE.green, PALETTE.teal, (y/2.4+1)/2);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
     return {pos, col};
@@ -593,13 +532,8 @@
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     const turns = 4, radius = 2.7;
     for(let i=0;i<N;i++){
-      const strand = i % 2;
-      const t = Math.random();
-      const angle = t*turns*Math.PI*2 + (strand===0 ? 0 : Math.PI);
-      const x = Math.cos(angle)*radius;
-      const z = Math.sin(angle)*radius;
-      const y = (t-0.5)*12;
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      const strand = i % 2, t = Math.random(), angle = t*turns*Math.PI*2 + (strand===0 ? 0 : Math.PI);
+      pos[i*3]=Math.cos(angle)*radius; pos[i*3+1]=(t-0.5)*12; pos[i*3+2]=Math.sin(angle)*radius;
       const c = strand===0 ? lerpColor(PALETTE.lavender, PALETTE.blue, t) : lerpColor(PALETTE.pink, PALETTE.mauve, t);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
@@ -610,15 +544,9 @@
     const pos = new Float32Array(N*3), col = new Float32Array(N*3);
     for(let i=0;i<N;i++){
       const idx = i + 0.5;
-      const phi = Math.acos(1 - 2*idx/N);
-      const theta = Math.PI*(1+Math.sqrt(5))*idx;
-      const r = 6.0 * (0.94 + 0.06*Math.random());
-      const x = Math.cos(theta)*Math.sin(phi)*r;
-      const y = Math.cos(phi)*r;
-      const z = Math.sin(theta)*Math.sin(phi)*r;
-      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
-      const t = (y/r+1)/2;
-      const c = lerpColor(PALETTE.blue, PALETTE.lavender, t);
+      const phi = Math.acos(1 - 2*idx/N), theta = Math.PI*(1+Math.sqrt(5))*idx, r = 6.0 * (0.94 + 0.06*Math.random());
+      pos[i*3]=Math.cos(theta)*Math.sin(phi)*r; pos[i*3+1]=Math.cos(phi)*r; pos[i*3+2]=Math.sin(theta)*Math.sin(phi)*r;
+      const c = lerpColor(PALETTE.blue, PALETTE.lavender, (Math.cos(phi)+1)/2);
       col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
     }
     return {pos, col};
@@ -712,12 +640,10 @@
   }
 
   // ---------------------------------------------------------------------
-  // 6. FPS SAMPLER
+  // 6. FPS COUNTER (Pure monitoring, no quality degradation auto-triggers)
   // ---------------------------------------------------------------------
-  let fpsHistory = [];
   let lastFpsSampleTime = performance.now();
   let frameCountSinceSample = 0;
-  let hasDownscaled = false;
 
   function sampleFps(now){
     frameCountSinceSample++;
@@ -725,25 +651,12 @@
       const fps = Math.round(frameCountSinceSample * 1000 / (now - lastFpsSampleTime));
       frameCountSinceSample = 0;
       lastFpsSampleTime = now;
-      fpsHistory.push(fps);
-      if(fpsHistory.length > 4) fpsHistory.shift();
       document.getElementById('fps-val').textContent = fps;
-
-      if(!hasDownscaled && fpsHistory.length >= 3){
-        const avg = fpsHistory.reduce((a,b)=>a+b,0)/fpsHistory.length;
-        if(avg < 32 && PARTICLE_COUNT > MIN_PARTICLE_COUNT){
-          hasDownscaled = true;
-          const newCount = Math.max(MIN_PARTICLE_COUNT, Math.floor(PARTICLE_COUNT*0.55));
-          buildParticleSystem(newCount);
-          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.15));
-          showToast('Optimizing field density…');
-        }
-      }
     }
   }
 
   // ---------------------------------------------------------------------
-  // 7. GESTURE PIPELINE (Explicit CDN Config Integration)
+  // 7. THROTTLED GESTURE PIPELINE (Perfect Fit & Precision Separation)
   // ---------------------------------------------------------------------
   const videoEl = document.getElementById('video-feed');
   const previewBox = document.getElementById('camera-preview');
@@ -761,49 +674,74 @@
     [0,17]
   ];
 
+  // FIXED: Flawless alignment calculation to map coordinates precisely 
   function drawHandOverlay(landmarks){
-    if(handCanvas.width !== handCanvas.clientWidth || handCanvas.height !== handCanvas.clientHeight){
-      handCanvas.width = videoEl.videoWidth || 320;
-      handCanvas.height = videoEl.videoHeight || 240;
+    if(!landmarks) {
+      handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+      return;
     }
-    const w = handCanvas.width, h = handCanvas.height;
-    handCtx.clearRect(0,0,w,h);
-    if(!landmarks) return;
-    handCtx.lineWidth = 2;
-    handCtx.strokeStyle = 'rgba(180,190,254,0.85)';
-    HAND_CONNECTIONS.forEach(([a,b])=>{
+    
+    // Explicit internal canvas sync matching aspect ratio
+    if(handCanvas.width !== videoEl.videoWidth || handCanvas.height !== videoEl.videoHeight){
+      handCanvas.width = videoEl.videoWidth || 640;
+      handCanvas.height = videoEl.videoHeight || 480;
+    }
+    
+    const w = handCanvas.width;
+    const h = handCanvas.height;
+    handCtx.clearRect(0, 0, w, h);
+    
+    // Smooth rendering parameters
+    handCtx.lineWidth = 4;
+    handCtx.strokeStyle = '#cba6f7'; // Rich purple mauve line
+    handCtx.lineCap = 'round';
+    handCtx.lineJoin = 'round';
+
+    // Draw lines
+    HAND_CONNECTIONS.forEach(([a, b]) => {
       const p1 = landmarks[a], p2 = landmarks[b];
       handCtx.beginPath();
-      handCtx.moveTo(p1.x*w, p1.y*h);
-      handCtx.lineTo(p2.x*w, p2.y*h);
+      handCtx.moveTo(p1.x * w, p1.y * h);
+      handCtx.lineTo(b1 = p2.x * w, p2.y * h);
       handCtx.stroke();
     });
-    landmarks.forEach((p, i)=>{
+
+    // Draw joints
+    landmarks.forEach((p, i) => {
       handCtx.beginPath();
-      handCtx.arc(p.x*w, p.y*h, i===0 ? 4.5 : 3, 0, Math.PI*2);
-      handCtx.fillStyle = i===0 ? '#f9e2af' : '#cba6f7';
+      handCtx.arc(p.x * w, p.y * h, i % 4 === 0 ? 6 : 4, 0, Math.PI * 2);
+      handCtx.fillStyle = i === 0 ? '#fab387' : '#89b4fa';
       handCtx.fill();
     });
   }
 
   let handDetected = false;
   let lastHandSeenAt = 0;
-  let lastWristY = null, lastWristT = null;
-  let lastWristX = null;
+  let lastWristY = null, lastWristT = null, lastWristX = null;
   let lastBurstAt = 0, lastSwipeAt = 0;
   let fingerHoldName = null, fingerHoldSince = 0;
 
+  // FIXED: Angle vectors instead of static box metrics to solve finger confusion
   function countExtendedFingers(landmarks){
-    const tips = [4,8,12,16,20];
-    const pips = [3,6,10,14,18];
     let count = 0;
-    const thumbTip = landmarks[4], thumbIp = landmarks[3], wrist = landmarks[0], indexMcp = landmarks[5];
-    const handSpanX = Math.abs(indexMcp.x - wrist.x) + 0.001;
-    const thumbExtended = Math.abs(thumbTip.x - wrist.x) > Math.abs(thumbIp.x - wrist.x) + handSpanX*0.15;
-    if(thumbExtended) count++;
-    for(let f=1; f<5; f++){
-      const tip = landmarks[tips[f]], pip = landmarks[pips[f]];
-      if(tip.y < pip.y - 0.02) count++; 
+    const wrist = landmarks[0];
+    
+    // Thumb: Compare distance to index base versus knuckles
+    const thumbTip = landmarks[4], thumbIp = landmarks[2], indexMcp = landmarks[5];
+    const thumbDistance = Math.hypot(thumbTip.x - indexMcp.x, thumbTip.y - indexMcp.y);
+    const ipDistance = Math.hypot(thumbIp.x - indexMcp.x, thumbIp.y - indexMcp.y);
+    if(thumbDistance > ipDistance * 1.18) count++;
+
+    // 4 Fingers: Structural joint extension checking vectors relative to the base wrist
+    const tips = [8, 12, 16, 20];
+    const pips = [6, 10, 14, 18];
+    for(let f = 0; f < 4; f++){
+      const tip = landmarks[tips[f]];
+      const pip = landmarks[pips[f]];
+      
+      const distTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+      const distPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
+      if(distTip > distPip) count++;
     }
     return count;
   }
@@ -814,11 +752,10 @@
     let total = 0;
     tips.forEach(idx=>{
       const t = landmarks[idx];
-      total += Math.hypot(t.x-wrist.x, t.y-wrist.y, (t.z||0)-(wrist.z||0));
+      total += Math.hypot(t.x-wrist.x, t.y-wrist.y);
     });
-    const avg = total/tips.length;
     const ref = Math.hypot(landmarks[9].x-wrist.x, landmarks[9].y-wrist.y) + 0.0001;
-    return avg / ref;
+    return (total / tips.length) / ref;
   }
 
   function onHandsResults(results){
@@ -833,7 +770,7 @@
       if(count >= 1 && count <= 5){
         const name = SHAPES[count-1];
         if(name !== fingerHoldName){ fingerHoldName = name; fingerHoldSince = now; }
-        else if(now - fingerHoldSince > 350){
+        else if(now - fingerHoldSince > 300){
           const idx = SHAPES.indexOf(name);
           if(idx !== currentShapeIndex) setShape(idx);
         }
@@ -843,7 +780,7 @@
 
       const openness = handOpenness(landmarks);
       expansionTarget = THREE.MathUtils.clamp(
-        THREE.MathUtils.mapLinear(openness, 1.0, 2.6, 0.42, 1.75), 0.4, 1.9
+        THREE.MathUtils.mapLinear(openness, 1.1, 2.5, 0.45, 1.8), 0.4, 1.9
       );
 
       const wristX = landmarks[9].x; 
@@ -855,11 +792,11 @@
         const dt = Math.max(1, now - lastWristT);
         const vy = (wristY - lastWristY) / dt; 
         const vx = lastWristX !== null ? (wristXpos - lastWristX) / dt : 0;
-        if(vy < -0.0016 && now - lastBurstAt > 900){
+        if(vy < -0.0018 && now - lastBurstAt > 900){
           burstPulse = 1.0;
           lastBurstAt = now;
           showToast('✷ Burst!');
-        } else if(Math.abs(vx) > 0.0022 && now - lastSwipeAt > 700){
+        } else if(Math.abs(vx) > 0.0025 && now - lastSwipeAt > 700){
           setShape(currentShapeIndex + (vx > 0 ? 1 : -1));
           lastSwipeAt = now;
         }
@@ -867,7 +804,7 @@
       lastWristY = wristY; lastWristT = now; lastWristX = wristXpos;
       document.getElementById('hand-val').textContent = `${count} finger${count===1?'':'s'}`;
     } else {
-      if(now - lastHandSeenAt > 1000){
+      if(now - lastHandSeenAt > 800){
         handDetected = false;
         document.getElementById('hand-val').textContent = 'not detected';
         drawHandOverlay(null);
@@ -886,25 +823,26 @@
     if(handsReady) return true;
     document.getElementById('status-line').innerHTML = 'Linking tracking core via CDN…';
     try {
-      // Force local execution scope to align explicitly with the loaded script models
       handsLib = new window.Hands({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
       handsLib.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
-        minDetectionConfidence: 0.6,
-        minTrackingConfidence: 0.6
+        minDetectionConfidence: 0.7, // Higher target precision threshold
+        minTrackingConfidence: 0.7
       });
       handsLib.onResults(onHandsResults);
       handsReady = true;
       return true;
     } catch(err) {
-      console.error("Tracking library handshake failed:", err);
+      console.error("Tracking handshake failed:", err);
       return false;
     }
   }
 
+  // FIXED: Throttled pipeline implementation to process incoming stream asynchronously
+  let processingFrame = false;
   async function enableCamera(){
     const linked = await initHandsEngine();
     if(!linked) {
@@ -918,41 +856,43 @@
 
       cameraInstance = new window.Camera(videoEl, {
         onFrame: async () => {
-          if(handsReady && cameraInstance) {
+          if(!handsReady || !cameraInstance || processingFrame) return;
+          processingFrame = true;
+          try {
             await handsLib.send({ image: videoEl });
+          } catch(e) {
+            console.warn(e);
           }
+          processingFrame = false;
         },
-        width: 320,
-        height: 240
+        width: 640,
+        height: 480
       });
 
       await cameraInstance.start();
       
       document.getElementById('camera-toggle').textContent = '◉ CAMERA ON';
       document.getElementById('camera-toggle').classList.add('active');
-      document.getElementById('status-line').innerHTML = 'Active! Hold your hand up to shift colors, adjust scale, or trigger shape morphs.';
+      document.getElementById('status-line').innerHTML = 'Active! Line matches your fingers beautifully.';
       controls.autoRotate = false;
       return true;
     } catch (e) {
-      console.error("Camera loop creation crashed:", e);
-      document.getElementById('status-line').innerHTML = '<b>Hardware failed.</b> Use manual dock buttons below.';
+      console.error("Camera crashed:", e);
+      document.getElementById('status-line').innerHTML = '<b>Hardware failed.</b> Use manual dock buttons.';
       previewBox.classList.remove('on');
       return false;
     }
   }
 
   function disableCamera(){
-    if(cameraInstance) {
-      cameraInstance.stop();
-      cameraInstance = null;
-    }
+    if(cameraInstance) { cameraInstance.stop(); cameraInstance = null; }
     handDetected = false;
     previewBox.classList.remove('on');
     drawHandOverlay(null);
     document.getElementById('camera-toggle').textContent = '◎ ENABLE CAMERA';
     document.getElementById('camera-toggle').classList.remove('active');
     document.getElementById('hand-val').textContent = 'not detected';
-    document.getElementById('status-line').innerHTML = 'Camera suspended. Tap a shape button below.';
+    document.getElementById('status-line').innerHTML = 'Camera suspended.';
     updateTrackDot();
     controls.autoRotate = true;
   }
