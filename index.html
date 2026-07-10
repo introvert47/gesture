@@ -37,12 +37,12 @@
     position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   }
   #camera-preview canvas{
-    position:absolute; inset:0; width:100%; height:100%;
+    position:absolute; inset:0; width:100%; height:100%; z-index:2;
   }
   #camera-preview-label{
     position:absolute; top:6px; left:8px; font-size:9px; letter-spacing:1.5px;
     color:var(--green); font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,0.7);
-    transform:scaleX(-1);
+    transform:scaleX(-1); z-index:3;
   }
 
   .panel{
@@ -218,7 +218,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ======================================================================
-   PARTICLE NEXUS — streamlined 8-shape gesture engine
+   PARTICLE NEXUS — Streamlined 8-Shape Core
    ====================================================================== */
 
 (function(){
@@ -237,7 +237,6 @@
     teal:[0.580,0.886,0.835], text:[0.804,0.839,0.957]
   };
 
-  // Streamlined to exactly 8 optimized, distinct shapes
   const SHAPES = ['nebula','heart','saturn','firework','torus','star','wave','globe'];
   const SHAPE_META = {
     nebula:    { label:'NEBULA',    icon:'✦', color:'#89b4fa' },
@@ -690,7 +689,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // 6. FPS / QUALITY SCALER
+  // 6. FPS MONITOR (Quality Cap)
   // ---------------------------------------------------------------------
   let fpsHistory = [];
   let lastFpsSampleTime = performance.now();
@@ -721,7 +720,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // 7. PRECISION HAND TRACKING (MediaPipe Engine + Stability Buffer)
+  // 7. PRECISION GESTURE ENGINE (MediaPipe Fixed Mapping Loop)
   // ---------------------------------------------------------------------
   const videoEl = document.getElementById('video-feed');
   const previewBox = document.getElementById('camera-preview');
@@ -729,8 +728,7 @@
   const handCtx = handCanvas.getContext('2d');
   let handsLib = null, handsReady = false, cameraStream = null, sendLoopHandle = null;
 
-  // Frame history history array to smooth calculations and filter noise
-  const FRAME_HISTORY_SIZE = 6;
+  const FRAME_HISTORY_SIZE = 5;
   let countHistoryBuffer = [];
 
   const HAND_CONNECTIONS = [
@@ -743,23 +741,27 @@
   ];
 
   function drawHandOverlay(landmarks){
-    if(!handCanvas.width) { handCanvas.width = 320; handCanvas.height = 240; }
+    if(!handCanvas.width) { handCanvas.width = 190; handCanvas.height = 143; }
     const w = handCanvas.width, h = handCanvas.height;
     handCtx.clearRect(0,0,w,h);
     if(!landmarks) return;
-    handCtx.lineWidth = 2;
-    handCtx.strokeStyle = 'rgba(180,190,254,0.85)';
+
+    // Draw the purple connectivity track overlay lines
+    handCtx.lineWidth = 2.5;
+    handCtx.strokeStyle = '#cba6f7'; // Mauve/Purple
     HAND_CONNECTIONS.forEach(([a,b])=>{
       const p1 = landmarks[a], p2 = landmarks[b];
       handCtx.beginPath();
-      handCtx.moveTo(p1.x*w, p1.y*h);
-      handCtx.lineTo(p2.x*w, p2.y*h);
+      handCtx.moveTo(p1.x * w, p1.y * h);
+      handCtx.lineTo(p2.x * w, p2.y * h);
       handCtx.stroke();
     });
+
+    // Draw the structural yellow tracking indicator joints
     landmarks.forEach((p, i)=>{
       handCtx.beginPath();
-      handCtx.arc(p.x*w, p.y*h, i===0 ? 4.5 : 3, 0, Math.PI*2);
-      handCtx.fillStyle = i===0 ? '#f9e2af' : '#cba6f7';
+      handCtx.arc(p.x * w, p.y * h, i === 0 ? 5 : 3.5, 0, Math.PI * 2);
+      handCtx.fillStyle = i === 0 ? '#fab387' : '#f9e2af'; // Peach / Yellow node
       handCtx.fill();
     });
   }
@@ -784,13 +786,13 @@
     const pips = [3,6,10,14,18];
     let count = 0;
     
-    // Thumb precision detection
+    // Fixed Thumb detection relative to joint structure 
     const thumbTip = landmarks[4], thumbIp = landmarks[3], wrist = landmarks[0], indexMcp = landmarks[5];
     const handSpanX = Math.abs(indexMcp.x - wrist.x) + 0.001;
     if(Math.abs(thumbTip.x - wrist.x) > Math.abs(thumbIp.x - wrist.x) + handSpanX * 0.18) {
       count++;
     }
-    // Structural index, middle, ring, pinky extension criteria
+    // Structural index, middle, ring, pinky tracking loops
     for(let f=1; f<5; f++){
       const tip = landmarks[tips[f]], pip = landmarks[pips[f]];
       if(tip.y < pip.y - 0.025) count++;
@@ -810,7 +812,6 @@
     return (total / tips.length) / ref;
   }
 
-  // Computes statistical mode of recent frame data to neutralize tracking jitter
   function getStabilizedFingersCount(rawCount){
     countHistoryBuffer.push(rawCount);
     if(countHistoryBuffer.length > FRAME_HISTORY_SIZE) countHistoryBuffer.shift();
@@ -835,38 +836,31 @@
       const landmarks = results.multiHandLandmarks[0];
       drawHandOverlay(landmarks);
 
-      // Raw tracking calculation run through stability algorithm filter
       const rawFingerCount = countExtendedFingers(landmarks);
       const stableFingerCount = getStabilizedFingersCount(rawFingerCount);
-
       const openness = handOpenness(landmarks);
 
-      // Fist (0 fingers) triggers strict system contraction
       if(stableFingerCount === 0 || openness < 1.15) {
         expansionTarget = 0.45;
         document.getElementById('hand-val').textContent = 'Fist (Contracted)';
       } else {
-        // Map 1-4 fingers reliably to index positions 0-3
         if(stableFingerCount >= 1 && stableFingerCount <= 4) {
           if((stableFingerCount - 1) !== currentShapeIndex && colorLerpT >= 1) {
             setShape(stableFingerCount - 1);
           }
           document.getElementById('hand-val').textContent = `${stableFingerCount} Finger Pose`;
         } 
-        // 5 Fingers (Open Hand) switches to Globe pattern and expands the field bounds
         else if(stableFingerCount === 5 || openness > 2.4) {
           if(currentShapeIndex !== 7 && colorLerpT >= 1) {
             setShape(7); // Map to Globe shape
           }
           document.getElementById('hand-val').textContent = 'Open Hand (Expanded)';
         }
-
         expansionTarget = THREE.MathUtils.clamp(
           THREE.MathUtils.mapLinear(openness, 1.2, 2.7, 0.9, 1.8), 0.8, 1.9
         );
       }
 
-      // Track relative movement metrics across axes
       const wristXpos = landmarks[0].x;
       const wristY = landmarks[0].y;
       hueShiftTarget = landmarks[9].x * Math.PI * 2;
@@ -876,7 +870,6 @@
         const vy = (wristY - lastWristY) / dt;
         const vx = lastWristX !== null ? (wristXpos - lastWristX) / dt : 0;
 
-        // Clean up gesture velocity thresholds to optimize swipe precision
         if(vy < -0.0022 && now - lastBurstAt > 900){
           burstPulse = 1.1;
           lastBurstAt = now;
@@ -909,13 +902,12 @@
     try{
       await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
       handsLib = new Hands({ locateFile: (f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-      // Optimized for mobile processor layout pipelines
       handsLib.setOptions({ maxNumHands:1, modelComplexity:0, minDetectionConfidence:0.65, minTrackingConfidence:0.55 });
       handsLib.onResults(onHandsResults);
       handsReady = true;
       return true;
     }catch(e){
-      console.warn('MediaPipe Hands fallback mode initialized.', e);
+      console.warn('MediaPipe initialization exception.', e);
       return false;
     }
   }
@@ -932,28 +924,29 @@
       });
       videoEl.srcObject = cameraStream;
       await videoEl.play();
+      
       videoEl.addEventListener('loadedmetadata', ()=>{
         handCanvas.width = videoEl.videoWidth || 320;
         handCanvas.height = videoEl.videoHeight || 240;
       }, { once:true });
+      
       previewBox.classList.add('on');
 
-      // Controlled polling rate to avoid thread lag
+      // Controlled loop polling to ensure high-performance frame pipeline
       sendLoopHandle = setInterval(async ()=>{
-        if(videoEl.readyState >= 2){
+        if(videoEl.readyState >= 2 && handsReady){
           try{ await handsLib.send({ image: videoEl }); }catch(e){}
         }
-      }, 85);
+      }, 70);
 
       document.getElementById('camera-toggle').textContent = '◉ CAMERA ON';
       document.getElementById('camera-toggle').classList.add('active');
-      document.getElementById('status-line').innerHTML = 'Precision Engine Active. Hold up 1-4 fingers steady, make a fist, or swipe ↔.';
+      document.getElementById('status-line').innerHTML = 'Precision Engine Active. 1-4 fingers steady, fist to pull inward, or swipe ↔.';
       controls.autoRotate = false;
       return true;
     }catch(e){
-      console.warn('Camera pipeline structural error:', e);
-      document.getElementById('status-line').innerHTML =
-        '<b>Hardware feed unavailable.</b> Interactive UI controls and cursor vector mapping enabled.';
+      console.warn('Camera context drop:', e);
+      document.getElementById('status-line').innerHTML = '<b>Hardware feed unavailable.</b> Touch interface active.';
       document.getElementById('track-dot').classList.add('off');
       previewBox.classList.remove('on');
       return false;
@@ -971,7 +964,7 @@
     document.getElementById('camera-toggle').textContent = '◎ ENABLE CAMERA';
     document.getElementById('camera-toggle').classList.remove('active');
     document.getElementById('hand-val').textContent = 'not detected';
-    document.getElementById('status-line').innerHTML = 'Camera off. Drag to rotate, pinch/scroll to zoom, or tap a shape below.';
+    document.getElementById('status-line').innerHTML = 'Camera off. Drag to rotate matrix view.';
     updateTrackDot();
     controls.autoRotate = true;
   }
@@ -987,7 +980,7 @@
   });
   document.getElementById('btn-skip-cam').addEventListener('click', ()=>{
     overlay.style.display = 'none';
-    document.getElementById('status-line').innerHTML = 'Manual interface mode active. Drag matrix to orient viewpoint.';
+    document.getElementById('status-line').innerHTML = 'Manual mode active.';
   });
 
   document.getElementById('gesture-guide-toggle').addEventListener('click', ()=>{
@@ -995,7 +988,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // 8. ANIMATION LOOP
+  // 8. ANIMATION MATRIX TICK
   // ---------------------------------------------------------------------
   const clock = new THREE.Clock();
   updateShapeUI(SHAPES[currentShapeIndex]);
