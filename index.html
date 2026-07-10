@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Particle Nexus — Gesture Field</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght=400;500;600;700&display=swap');
 
   :root{
     --base:#1e1e2e; --mantle:#181825; --crust:#11111b;
@@ -25,24 +25,25 @@
   canvas{ display:block; }
 
   #camera-preview{
-    position:fixed; top:112px; right:14px; z-index:19;
+    position:fixed; top:112px; right:14px; z-index:30; /* Bumped z-index to stay above panels */
     width:190px; height:143px; border-radius:10px; overflow:hidden;
     background:#000; border:1px solid rgba(180,190,254,0.22);
     box-shadow:0 6px 22px rgba(0,0,0,0.4);
-    transform:scaleX(-1); /* mirror for a natural selfie view */
     display:none;
   }
   #camera-preview.on{ display:block; }
   #camera-preview video{
     position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    transform:scaleX(-1); /* Mirror just the video feed */
   }
   #camera-preview canvas{
     position:absolute; inset:0; width:100%; height:100%;
+    transform:scaleX(-1); /* Mirror the hand tracking overlay to match video */
   }
   #camera-preview-label{
     position:absolute; top:6px; left:8px; font-size:9px; letter-spacing:1.5px;
     color:var(--green); font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,0.7);
-    transform:scaleX(-1); /* un-mirror the text so it reads normally */
+    z-index:31;
   }
 
   .panel{
@@ -155,7 +156,7 @@
     #hud .row, #hud .status-line{ font-size:9.5px; }
     #shape-name{ font-size:10px; padding:8px 12px; top:12px; right:12px; }
     #camera-toggle{ padding:7px 10px; font-size:9.5px; top:56px; right:12px; }
-    #camera-preview{ top:96px; right:12px; width:130px; height:98px; }
+    #camera-preview{ top:96px; right:12px; width:130px; height:98px; z-index:30; }
     #shape-dock{ bottom:80px; gap:6px; max-width:88vw; }
     .shape-btn{ width:34px; height:34px; font-size:13px; }
     #gesture-guide{ display:none; }
@@ -171,7 +172,7 @@
 <div id="scene-container"></div>
 
 <div id="camera-preview">
-  <video id="video-feed" playsinline muted autoplay></video>
+  <video id="video-feed" autoplay muted playsinline></video>
   <canvas id="hand-canvas"></canvas>
   <div id="camera-preview-label">CAMERA</div>
 </div>
@@ -811,7 +812,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // 7. HAND TRACKING (MediaPipe Hands) with graceful fallback
+  // 7. HAND TRACKING (MediaPipe Hands)
   // ---------------------------------------------------------------------
   const videoEl = document.getElementById('video-feed');
   const previewBox = document.getElementById('camera-preview');
@@ -830,7 +831,6 @@
 
   function drawHandOverlay(landmarks){
     if(handCanvas.width !== handCanvas.clientWidth || handCanvas.height !== handCanvas.clientHeight){
-      // fall back to a fixed internal resolution if metadata hasn't set one yet
       if(!handCanvas.width) { handCanvas.width = 320; handCanvas.height = 240; }
     }
     const w = handCanvas.width, h = handCanvas.height;
@@ -873,19 +873,17 @@
     });
   }
 
-  function countExtendedFingers(landmarks, handednessLabel){
-    // landmarks: 21 points, normalized [0,1] image coords (x flips w/ selfie mode already handled by mediapipe)
+  function countExtendedFingers(landmarks){
     const tips = [4,8,12,16,20];
     const pips = [3,6,10,14,18];
     let count = 0;
-    // thumb: compare x of tip vs ip joint relative to handedness
     const thumbTip = landmarks[4], thumbIp = landmarks[3], wrist = landmarks[0], indexMcp = landmarks[5];
     const handSpanX = Math.abs(indexMcp.x - wrist.x) + 0.001;
     const thumbExtended = Math.abs(thumbTip.x - wrist.x) > Math.abs(thumbIp.x - wrist.x) + handSpanX*0.15;
     if(thumbExtended) count++;
     for(let f=1; f<5; f++){
       const tip = landmarks[tips[f]], pip = landmarks[pips[f]];
-      if(tip.y < pip.y - 0.02) count++; // tip above pip (in image coords, y grows downward) = extended
+      if(tip.y < pip.y - 0.02) count++; 
     }
     return count;
   }
@@ -899,9 +897,8 @@
       total += Math.hypot(t.x-wrist.x, t.y-wrist.y, (t.z||0)-(wrist.z||0));
     });
     const avg = total/tips.length;
-    // normalize using a reference bone length (wrist -> middle mcp)
     const ref = Math.hypot(landmarks[9].x-wrist.x, landmarks[9].y-wrist.y) + 0.0001;
-    return avg / ref; // roughly 1.0 (curled) .. 3.0+ (wide open)
+    return avg / ref;
   }
 
   function onHandsResults(results){
@@ -912,7 +909,7 @@
       const landmarks = results.multiHandLandmarks[0];
       drawHandOverlay(landmarks);
 
-      // 1. finger count -> shape (debounced hold)
+      // 1. finger count -> shape
       const count = countExtendedFingers(landmarks);
       if(count >= 1 && count <= 5){
         const name = SHAPES[count-1];
@@ -925,22 +922,22 @@
         fingerHoldName = null;
       }
 
-      // 2. openness -> expansion (fist ~1.0 -> contract, wide open ~2.6+ -> expand)
+      // 2. openness -> expansion
       const openness = handOpenness(landmarks);
       expansionTarget = THREE.MathUtils.clamp(
         THREE.MathUtils.mapLinear(openness, 1.0, 2.6, 0.42, 1.75), 0.4, 1.9
       );
 
       // 3. hand x position -> hue shift
-      const wristX = landmarks[9].x; // 0..1 across frame
+      const wristX = landmarks[9].x; 
       hueShiftTarget = wristX * Math.PI * 2;
 
-      // 4. swipe up -> burst, swipe left/right -> cycle full shape list
+      // 4. swipe monitoring
       const wristY = landmarks[0].y;
       const wristXpos = landmarks[0].x;
       if(lastWristY !== null){
         const dt = Math.max(1, now - lastWristT);
-        const vy = (wristY - lastWristY) / dt; // negative = moving up
+        const vy = (wristY - lastWristY) / dt; 
         const vx = lastWristX !== null ? (wristXpos - lastWristX) / dt : 0;
         if(vy < -0.0016 && now - lastBurstAt > 900){
           burstPulse = 1.0;
@@ -979,7 +976,7 @@
       handsReady = true;
       return true;
     }catch(e){
-      console.warn('MediaPipe Hands unavailable, falling back to manual controls.', e);
+      console.warn('MediaPipe Hands library load failed.', e);
       return false;
     }
   }
@@ -991,20 +988,26 @@
         const ok = await initHandsLib();
         if(!ok) throw new Error('hands-lib-failed');
       }
+      
       cameraStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode:'user', width:{ideal:320}, height:{ideal:240} }, audio:false
       });
+      
       videoEl.srcObject = cameraStream;
+      // Force preview block rendering update immediately
+      previewBox.classList.add('on');
+      
       await videoEl.play();
+      
       videoEl.addEventListener('loadedmetadata', ()=>{
         handCanvas.width = videoEl.videoWidth || 320;
         handCanvas.height = videoEl.videoHeight || 240;
       }, { once:true });
-      previewBox.classList.add('on');
 
+      // Consistent runtime pipeline loop
       sendLoopHandle = setInterval(async ()=>{
         if(videoEl.readyState >= 2){
-          try{ await handsLib.send({ image: videoEl }); }catch(e){ /* transient decode errors, ignore */ }
+          try{ await handsLib.send({ image: videoEl }); }catch(e){}
         }
       }, 90);
 
@@ -1014,7 +1017,7 @@
       controls.autoRotate = false;
       return true;
     }catch(e){
-      console.warn('Camera/hand tracking unavailable:', e);
+      console.warn('Camera/hand tracking runtime init failure:', e);
       document.getElementById('status-line').innerHTML =
         '<b>Camera unavailable.</b> Using mouse / touch drag and the shape buttons instead.';
       document.getElementById('track-dot').classList.add('off');
@@ -1042,7 +1045,7 @@
     if(cameraStream) disableCamera(); else enableCamera();
   });
 
-  // permission overlay wiring
+  // Permission overlay logic
   const overlay = document.getElementById('permission-overlay');
   document.getElementById('btn-enable-cam').addEventListener('click', async ()=>{
     overlay.style.display = 'none';
@@ -1053,7 +1056,7 @@
     document.getElementById('status-line').innerHTML = 'Manual mode. Drag to rotate, scroll/pinch to zoom, tap shapes below.';
   });
 
-  // mobile gesture-guide toggle
+  // Mobile gesture guide toggle
   document.getElementById('gesture-guide-toggle').addEventListener('click', ()=>{
     document.getElementById('gesture-guide').classList.toggle('mobile-open');
   });
@@ -1069,13 +1072,11 @@
     const now = performance.now();
     const dt = Math.min(0.05, clock.getDelta());
 
-    // smooth expansion / hue / burst decay
     expansion += (expansionTarget - expansion) * Math.min(1, dt*3.2);
     hueShift += (hueShiftTarget - hueShift) * Math.min(1, dt*2.5);
     burstPulse += (0 - burstPulse) * Math.min(1, dt*1.6);
     material.uniforms.uHueShift.value = hueShift;
 
-    // color cross-fade between shapes
     if(colorLerpT < 1 && colorLerpFrom && colorLerpTo){
       colorLerpT = Math.min(1, colorLerpT + dt*1.8);
       const colArr = geometry.attributes.color.array;
@@ -1085,7 +1086,6 @@
       geometry.attributes.color.needsUpdate = true;
     }
 
-    // position morph toward target shape * expansion(+burst)
     const targetShape = shapeCache[SHAPES[currentShapeIndex]].pos;
     const scale = expansion + burstPulse*0.9;
     const posArr = geometry.attributes.position.array;
@@ -1096,7 +1096,6 @@
     }
     geometry.attributes.position.needsUpdate = true;
 
-    // gentle idle rotation of the particle field itself
     particleGroup.rotation.y += dt * 0.12;
     particleGroup.rotation.x = Math.sin(now*0.00015) * 0.05;
 
@@ -1115,7 +1114,6 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // number keys 1-5 for desktop testing convenience
   window.addEventListener('keydown', (e)=>{
     const n = parseInt(e.key,10);
     if(n>=1 && n<=5) setShape(n-1);
