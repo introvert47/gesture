@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Hand-Tracked Particle System</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Small Webcam Preview Container */
+        #webcam-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #8a2be2;
+            box-shadow: 0 0 15px rgba(138, 43, 226, 0.5);
+            z-index: 10;
+            transform: scaleX(-1); /* Mirror the webcam view */
+            background: #000;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* UI Overlay / Instructions */
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 10;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 { margin: 0 0 10px 0; font-size: 1.2rem; color: #a855f7; }
+        p { margin: 5px 0; font-size: 0.85rem; color: #ccc; }
+        .active-shape { color: #00ffcc; font-weight: bold; }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline muted></video>
+    </div>
+
+    <div id="ui-overlay">
+        <h1>Hand Gesture Particles</h1>
+        <p>👋 Move hand: Control position & Purple skeletal line</p>
+        <p>👌 Pinch / Open Hand: Morph & Scale particles</p>
+        <p>↔️ Move Left/Right: Shift Particle Colors</p>
+        <hr style="border: 0.5px solid #333; margin: 10px 0;">
+        <p><strong>Show Fingers to Switch Templates:</strong></p>
+        <p id="shape-1">1 Finger: ❤️ Heart</p>
+        <p id="shape-2">2 Fingers: 🌸 Flower</p>
+        <p id="shape-3">3 Fingers: 🪐 Saturn Shape</p>
+        <p id="shape-4">4 Fingers: 🎆 Fireworks</p>
+        <p id="shape-5" class="active-shape">5 Fingers: 🌐 Sphere Cloud</p>
+    </div>
+
+    <script>
+        // --- GLOBALS & CONFIG ---
+        const PARTICLE_COUNT = 15000;
+        let scene, camera, renderer, particleGeometry, particleSystem;
+        let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+        let currentPositions = new Float32Array(PARTICLE_COUNT * 3);
+        let colors = new Float32Array(PARTICLE_COUNT * 3);
+        let currentShapeIndex = 5;
+
+        // Hand tracking state
+        let handPresent = false;
+        let handX = 0, handY = 0, handZ = 0;
+        let handPinchRatio = 1.0; 
+        let baseColorHue = 0.7; // Purple/Blue starter
+
+        // Hand Visualizer (Purple Line Skeleton)
+        let handSkeletonLines;
+        // MediaPipe connections structure mapping for rendering the hand skeleton lines
+        const HAND_CONNECTIONS = [
+            [0,1], [1,2], [2,3], [3,4], // Thumb
+            [0,5], [5,6], [6,7], [7,8], // Index
+            [5,9], [9,10], [10,11], [11,12], // Middle
+            [9,13], [13,14], [14,15], [15,16], // Ring
+            [13,17], [0,17], [17,18], [18,19], [19,20] // Pinky
+        ];
+
+        // --- INITIALIZATION ---
+        initThree();
+        generateShape(5); // Start with Sphere
+        initMediaPipe();
+        animate();
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.z = 15;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Particle Geometry setup
+            particleGeometry = new THREE.BufferGeometry();
+            
+            // Populate initial layout array
+            for(let i=0; i<PARTICLE_COUNT*3; i++) {
+                currentPositions[i] = (Math.random() - 0.5) * 20;
+            }
+
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // Custom soft circular particle texture
+            const pTexture = createCircleTexture();
+
+            const particleMaterial = new THREE.PointsMaterial({
+                size: 0.12,
+                map: pTexture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true
+            });
+
+            particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(particleSystem);
+
+            // Hand Skeleton Line setup (Dynamic Purple Lines)
+            const lineGeometry = new THREE.BufferGeometry();
+            // 21 landmarks means we draw based on connection array points
+            const linePositions = new Float32Array(HAND_CONNECTIONS.length * 2 * 3); 
+            lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+            
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: 0x9400D3, // Neon Dark Purple
+                linewidth: 3,    // Fallback for browsers
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            handSkeletonLines = new THREE.LineSegments(lineGeometry, lineMaterial);
+            scene.add(handSkeletonLines);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Circular smooth gradient texture generator
+        function createCircleTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 32, 32);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- SHAPE GENERATION TEMPLATES ---
+        function generateShape(shapeNumber) {
+            currentShapeIndex = shapeNumber;
+            
+            // Highlight active text in UI
+            for(let i=1; i<=5; i++) {
+                document.getElementById(`shape-${i}`).className = (i === shapeNumber) ? 'active-shape' : '';
+            }
+
+            let p = new THREE.Vector3();
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const i3 = i * 3;
+
+                switch(shapeNumber) {
+                    case 1: // HEART SHAPE
+                        const t = Math.PI * 2 * (i / PARTICLE_COUNT);
+                        // Parametric heart formula
+                        p.x = 16 * Math.pow(Math.sin(t), 3);
+                        p.y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                        p.z = (Math.random() - 0.5) * 3;
+                        p.multiplyScalar(0.35); 
+                        break;
+
+                    case 2: // FLOWER (Rose Curve variants)
+                        const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
+                        const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi;
+                        const petals = 5;
+                        const r = 5 + 2 * Math.sin(petals * theta);
+                        p.x = r * Math.sin(phi) * Math.cos(theta);
+                        p.y = r * Math.sin(phi) * Math.sin(theta);
+                        p.z = r * Math.cos(phi) * 0.3; 
+                        break;
+
+                    case 3: // SATURN
+                        if (i < PARTICLE_COUNT * 0.4) {
+                            // Core Planet Sphere
+                            const u = Math.random();
+                            const v = Math.random();
+                            const theta2 = u * 2.0 * Math.PI;
+                            const phi2 = Math.acos(2.0 * v - 1.0);
+                            const r2 = 2.5 + Math.random()*0.2;
+                            p.x = r2 * Math.sin(phi2) * Math.cos(theta2);
+                            p.y = r2 * Math.sin(phi2) * Math.sin(theta2);
+                            p.z = r2 * Math.cos(phi2);
+                        } else {
+                            // Rings
+                            const rad = 4.0 + Math.random() * 3.5;
+                            const ang = Math.random() * Math.PI * 2;
+                            p.x = rad * Math.cos(ang);
+                            p.y = rad * Math.sin(ang) * 0.2; // Tilted aspect
+                            p.z = rad * Math.sin(ang);
+                        }
+                        break;
+
+                    case 4: // FIREWORKS (Explosive trails)
+                        const angle1 = Math.random() * Math.PI * 2;
+                        const angle2 = Math.acos((Math.random() * 2) - 1);
+                        // Distribute outward unevenly to emulate velocity bursts
+                        const speed = Math.pow(Math.random(), 2.5) * 9; 
+                        p.x = speed * Math.sin(angle2) * Math.cos(angle1);
+                        p.y = speed * Math.sin(angle2) * Math.sin(angle1);
+                        p.z = speed * Math.cos(angle2);
+                        break;
+
+                    case 5: // DEFAULT SPHERE
+                    default:
+                        const u = Math.random();
+                        const v = Math.random();
+                        const th = u * 2.0 * Math.PI;
+                        const ph = Math.acos(2.0 * v - 1.0);
+                        const radius = 5;
+                        p.x = radius * Math.sin(ph) * Math.cos(th);
+                        p.y = radius * Math.sin(ph) * Math.sin(th);
+                        p.z = radius * Math.cos(ph);
+                        break;
+                }
+
+                targetPositions[i3] = p.x;
+                targetPositions[i3+1] = p.y;
+                targetPositions[i3+2] = p.z;
+            }
+        }
+
+        // --- MEDIAPIPE HAND TRACKING INTERFACE ---
+        function initMediaPipe() {
+            const videoElement = document.getElementById('webcam');
+            
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            hands.onResults(onHandResults);
+
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 480,
+                height: 360
+            });
+            cameraUtils.start();
+        }
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handPresent = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Map wrist (landmark 0) to 3D Space coordinate projections
+                // Inverting X axis to counter mirror mapping alignment
+                handX = -(landmarks[0].x - 0.5) * 25; 
+                handY = -(landmarks[0].y - 0.5) * 18;
+                handZ = (landmarks[0].z) * 10;
+
+                // 1. DYNAMIC COLOR HUE via horizontal tracking positions
+                baseColorHue = landmarks[0].x; 
+
+                // 2. PINCH VALUE GESTURE (Distance from Thumb Tip [4] to Index Tip [8])
+                const dx = landmarks[4].x - landmarks[8].x;
+                const dy = landmarks[4].y - landmarks[8].y;
+                const dz = landmarks[4].z - landmarks[8].z;
+                const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                // Normalized scale response metric mapping
+                handPinchRatio = THREE.MathUtils.clamp(distance * 6, 0.2, 3.0);
+
+                // 3. SHAPE SELECTION GESTURE VIA FINGER COUNTING DETECTOR
+                const fingersUp = countFingers(landmarks);
+                if (fingersUp >= 1 && fingersUp <= 5 && fingersUp !== currentShapeIndex) {
+                    generateShape(fingersUp);
+                }
+
+                // 4. GENERATE PURPLE SKELETON RENDER PIPELINE
+                const linePositions = handSkeletonLines.geometry.attributes.position.array;
+                let lineIdx = 0;
+
+                HAND_CONNECTIONS.forEach(connection => {
+                    const startNode = landmarks[connection[0]];
+                    const endNode = landmarks[connection[1]];
+
+                    // Start Coordinate Point
+                    linePositions[lineIdx++] = -(startNode.x - 0.5) * 25;
+                    linePositions[lineIdx++] = -(startNode.y - 0.5) * 18;
+                    linePositions[lineIdx++] = (startNode.z) * 10;
+
+                    // End Coordinate Point
+                    linePositions[lineIdx++] = -(endNode.x - 0.5) * 25;
+                    linePositions[lineIdx++] = -(endNode.y - 0.5) * 18;
+                    linePositions[lineIdx++] = (endNode.z) * 10;
+                });
+                
+                handSkeletonLines.geometry.attributes.position.needsUpdate = true;
+                handSkeletonLines.visible = true;
+
+            } else {
+                handPresent = false;
+                handSkeletonLines.visible = false;
+                handPinchRatio = 1.0; 
+            }
+        }
+
+        // Utility evaluating Open/Closed extension statuses of individual finger nodes
+        function countFingers(hl) {
+            let count = 0;
+            // Tips vs Joint-pivots parameters matching structure mapping
+            // Index, Middle, Ring, Pinky
+            const tips = [8, 12, 16, 20];
+            const pips = [6, 10, 14, 18];
+
+            for(let i=0; i<4; i++) {
+                if(hl[tips[i]].y < hl[pips[i]].y) count++;
+            }
+            // Special evaluation check conditional tracking variant for Thumb orientation properties
+            if(hl[4].x < hl[3].x) count++; 
+
+            return count === 0 ? 5 : count; // Default fallback avoidance safeguard logic
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const posAttr = particleGeometry.attributes.position;
+            const colAttr = particleGeometry.attributes.color;
+            
+            // Subtle global rotation to keep particles alive when hand is gone
+            particleSystem.rotation.y += 0.002;
+            particleSystem.rotation.x += 0.001;
+
+            // Smooth Interpolation Step (Lerping)
+            const lerpSpeed = 0.06;
+            const targetColor = new THREE.Color();
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const i3 = i * 3;
+
+                // Base Structural Target positions modified by dynamic pinch scaling values
+                let tx = targetPositions[i3] * handPinchRatio;
+                let ty = targetPositions[i3+1] * handPinchRatio;
+                let tz = targetPositions[i3+2] * handPinchRatio;
+
+                // Magnet attraction effect pulling coordinates toward hand location coordinates
+                if (handPresent) {
+                    // Blend shape target layout space offsets relative to tracking nodes positions
+                    tx += handX;
+                    ty += handY;
+                    tz += handZ;
+                }
+
+                // Smooth position transitions
+                currentPositions[i3]   += (tx - currentPositions[i3]) * lerpSpeed;
+                currentPositions[i3+1] += (ty - currentPositions[i3+1]) * lerpSpeed;
+                currentPositions[i3+2] += (tz - currentPositions[i3+2]) * lerpSpeed;
+
+                // Color Shifting Logic
+                // Beautiful gradient variances moving smoothly across indexes
+                const hueOffset = (i / PARTICLE_COUNT) * 0.25; 
+                targetColor.setHSL((baseColorHue + hueOffset) % 1.0, 0.8, 0.6);
+
+                colors[i3]   += (targetColor.r - colors[i3]) * 0.1;
+                colors[i3+1] += (targetColor.g - colors[i3+1]) * 0.1;
+                colors[i3+2] += (targetColor.b - colors[i3+2]) * 0.1;
+            }
+
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
