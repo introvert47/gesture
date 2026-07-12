@@ -124,6 +124,7 @@
     z-index:30; background:rgba(12,16,26,0.85); border:1px solid var(--panel-border);
     padding:8px 16px; border-radius:8px; font-size:11px; color:var(--amber);
     opacity:0; transition:all .35s ease; pointer-events:none;
+    white-space: nowrap;
   }
   #toast.show{ opacity:1; transform:translateX(-50%) translateY(38px); }
 
@@ -133,6 +134,7 @@
     #sliders{ right:14px; bottom:96px; width:140px; }
     #dock{ bottom:14px; gap:5px; }
     .shapeBtn{ width:38px; height:38px; font-size:15px; }
+    #toast.show { transform:translateX(-50%) translateY(140px); } /* Pushes toast lower on mobile layout to prevent status overlap */
   }
 </style>
 </head>
@@ -439,8 +441,7 @@
       }
 
       // 2. MOVE DETECTED HAND TO ROTATE ENTIRE PARTICLE CLOUD FIELD
-      // Uses the center point of the palm (Landmark 9) to steer rotation parameters
-      const handX = (lm[9].x - 0.5) * 2.5; // Map from -1.25 to 1.25
+      const handX = (lm[9].x - 0.5) * 2.5; 
       const handY = (lm[9].y - 0.5) * 2.0; 
       rotState.targetY = -handX; 
       rotState.targetX = handY;
@@ -475,7 +476,7 @@
 
       const camera = new Camera(videoEl, { onFrame: async ()=>{ await hands.send({ image: videoEl }); }, width: 320, height: 240 });
       await camera.start();
-      document.getElementById('dotCam').classList.add('on');
+      
       document.getElementById('camState').textContent = 'Live tracking';
       overlayCanvas.width = 320; overlayCanvas.height = 240;
       animate(); setShape(-1, false);
