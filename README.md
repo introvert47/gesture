@@ -1,4 +1,4 @@
-nteractive 3D Hand-Tracked Particle System is a cutting-edge, web-based immersive experience that merges GPU-accelerated 3D graphics with machine learning. By utilizing your device's webcam, the application captures your physical hand gestures in real time and translates them into fluid manipulations of over 15,000 glowing particles.
+Interactive 3D Hand-Tracked Particle System is a cutting-edge, web-based immersive experience that merges GPU-accelerated 3D graphics with machine learning. By utilizing your device's webcam, the application captures your physical hand gestures in real time and translates them into fluid manipulations of over 15,000 glowing particles.
 
 Built entirely with Three.js and MediaPipe Hands, it bridges the physical and digital worlds entirely within the browser—requiring no installations, plugins, or external hardware. A sleek, neon-purple digital skeleton mirrors your hand structure in real-time, giving you the sensation of directly bending a cosmic dust cloud to your will. It is fully optimized, highly stable, and designed to run smoothly on both desktop computers and mobile devices.
 
