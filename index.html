@@ -21,14 +21,14 @@
             z-index: 1;
         }
 
-        /* Small Webcam Preview Container */
+        /* Compact Webcam Preview Container */
         #webcam-container {
             position: absolute;
             bottom: 15px;
             right: 15px;
-            width: 110px;
-            height: 110px;
-            border-radius: 50%; /* Rounded for cleaner look on mobile */
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
             overflow: hidden;
             border: 2px solid #a855f7;
             box-shadow: 0 0 15px rgba(138, 43, 226, 0.4);
@@ -43,12 +43,12 @@
             object-fit: cover;
         }
 
-        /* FIXED GREEN PROBLEM: UI Compact Overlay */
+        /* UI Overlay */
         #ui-overlay {
             position: absolute;
             top: 15px;
             left: 15px;
-            right: 15px; /* Prevent stretching past edges */
+            right: 15px;
             max-width: 320px;
             color: white;
             z-index: 10;
@@ -65,7 +65,6 @@
         hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0; }
         .active-shape { color: #00ffcc; font-weight: bold; }
 
-        /* Mobile specific font size adjustments */
         @media (max-width: 600px) {
             #ui-overlay {
                 max-width: 100%;
@@ -88,8 +87,8 @@
 
     <div id="ui-overlay">
         <h1>Hand Gesture Particles</h1>
-        <p>👋 Move Hand: Controls central gravitational pull</p>
-        <p>👌 Pinch / Open: Morph & Scale particles</p>
+        <p>👋 Move Hand: Modulates rotation velocity & color shifts</p>
+        <p>👌 Pinch / Open Hand: Morphs object scale parameters</p>
         <hr>
         <p id="shape-1">1 Finger: ❤️ Heart</p>
         <p id="shape-2">2 Fingers: 🌸 Flower</p>
@@ -99,33 +98,21 @@
     </div>
 
     <script>
-        const PARTICLE_COUNT = 12000; // Optimized count for stable mobile frames
+        const PARTICLE_COUNT = 15000;
         let scene, camera, renderer, particleGeometry, particleSystem;
         let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
         let currentPositions = new Float32Array(PARTICLE_COUNT * 3);
         let colors = new Float32Array(PARTICLE_COUNT * 3);
         let currentShapeIndex = 5;
 
+        // Interactive tracking mechanics
         let handPresent = false;
-        let handX = 0, handY = 0, handZ = 0;
-        let handPinchRatio = 1.0; 
         let baseColorHue = 0.75; 
-
-        let handSkeletonLines;
-        const HAND_CONNECTIONS = [
-            [0,1], [1,2], [2,3], [3,4],
-            [0,5], [5,6], [6,7], [7,8],
-            [5,9], [9,10], [10,11], [11,12],
-            [9,13], [13,14], [14,15], [15,16],
-            [13,17], [0,17], [17,18], [18,19], [19,20]
-        ];
-
-        // Coordinate space boundaries calculated at runtime
-        let viewWidthSpace = 10;
-        let viewHeightSpace = 10;
+        let handPinchRatio = 1.0;
+        let targetSpeedY = 0.005;
+        let targetSpeedX = 0.002;
 
         initThree();
-        updateSpaceScale(); // Calculate sizing for phone vs PC screen
         generateShape(5); 
         initMediaPipe();
         animate();
@@ -135,7 +122,7 @@
             
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.z = 12; // Brought camera closer to make particles look larger and centered
+            camera.position.z = 11; 
 
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -152,7 +139,7 @@
             particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
             const particleMaterial = new THREE.PointsMaterial({
-                size: window.innerWidth < 600 ? 0.22 : 0.14, // FIXED BLUE: Particles look bigger and crisper on mobile screens
+                size: window.innerWidth < 600 ? 0.20 : 0.12,
                 map: createCircleTexture(),
                 transparent: true,
                 blending: THREE.AdditiveBlending,
@@ -163,21 +150,6 @@
             particleSystem = new THREE.Points(particleGeometry, particleMaterial);
             scene.add(particleSystem);
 
-            // Hand Lines Setup
-            const lineGeometry = new THREE.BufferGeometry();
-            const linePositions = new Float32Array(HAND_CONNECTIONS.length * 2 * 3); 
-            lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
-            
-            const lineMaterial = new THREE.LineBasicMaterial({
-                color: 0xbc6ff1, // Brighter neon purple
-                linewidth: 2,
-                transparent: true,
-                opacity: 0.9
-            });
-            
-            handSkeletonLines = new THREE.LineSegments(lineGeometry, lineMaterial);
-            scene.add(handSkeletonLines);
-
             window.addEventListener('resize', onWindowResize);
         }
 
@@ -187,18 +159,11 @@
             const ctx = canvas.getContext('2d');
             const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
             grad.addColorStop(0, 'rgba(255,255,255,1)');
-            grad.addColorStop(0.3, 'rgba(200,150,255,0.8)'); // Gives particles an inner purple glow core
+            grad.addColorStop(0.2, 'rgba(180,100,255,0.8)'); 
             grad.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, 32, 32);
             return new THREE.CanvasTexture(canvas);
-        }
-
-        // Dynamically calculate coordinate limits to keep lines on hand
-        function updateSpaceScale() {
-            const vFOV = THREE.MathUtils.degToRad(camera.fov);
-            viewHeightSpace = 2 * Math.tan(vFOV / 2) * camera.position.z;
-            viewWidthSpace = viewHeightSpace * camera.aspect;
         }
 
         function generateShape(shapeNumber) {
@@ -209,8 +174,7 @@
             }
 
             let p = new THREE.Vector3();
-            // Scale shapes slightly smaller to keep them tightly clustered in center
-            const sizeFactor = window.innerWidth < 600 ? 0.7 : 1.0; 
+            const sizeFactor = window.innerWidth < 600 ? 0.85 : 1.1; 
 
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
@@ -221,7 +185,7 @@
                         p.x = 16 * Math.pow(Math.sin(t), 3);
                         p.y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
                         p.z = (Math.random() - 0.5) * 2;
-                        p.multiplyScalar(0.22 * sizeFactor); 
+                        p.multiplyScalar(0.24 * sizeFactor); 
                         break;
                     case 2: // FLOWER
                         const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
@@ -229,30 +193,30 @@
                         const r = 3.5 + 1.5 * Math.sin(5 * theta);
                         p.x = r * Math.sin(phi) * Math.cos(theta) * sizeFactor;
                         p.y = r * Math.sin(phi) * Math.sin(theta) * sizeFactor;
-                        p.z = r * Math.cos(phi) * 0.2; 
+                        p.z = r * Math.cos(phi) * 0.3; 
                         break;
                     case 3: // SATURN
                         if (i < PARTICLE_COUNT * 0.4) {
                             const u = Math.random(), v = Math.random();
                             const th = u * 2.0 * Math.PI, ph = Math.acos(2.0 * v - 1.0);
-                            const r2 = (1.8 + Math.random()*0.2) * sizeFactor;
+                            const r2 = (2.0 + Math.random()*0.25) * sizeFactor;
                             p.x = r2 * Math.sin(ph) * Math.cos(th); p.y = r2 * Math.sin(ph) * Math.sin(th); p.z = r2 * Math.cos(ph);
                         } else {
-                            const rad = (3.0 + Math.random() * 2.2) * sizeFactor;
+                            const rad = (3.5 + Math.random() * 2.5) * sizeFactor;
                             const ang = Math.random() * Math.PI * 2;
-                            p.x = rad * Math.cos(ang); p.y = rad * Math.sin(ang) * 0.2; p.z = rad * Math.sin(ang);
+                            p.x = rad * Math.cos(ang); p.y = rad * Math.sin(ang) * 0.15; p.z = rad * Math.sin(ang);
                         }
                         break;
                     case 4: // FIREWORKS
                         const a1 = Math.random() * Math.PI * 2, a2 = Math.acos((Math.random() * 2) - 1);
-                        const speed = Math.pow(Math.random(), 2) * 5.5 * sizeFactor; 
+                        const speed = Math.pow(Math.random(), 1.8) * 6.0 * sizeFactor; 
                         p.x = speed * Math.sin(a2) * Math.cos(a1); p.y = speed * Math.sin(a2) * Math.sin(a1); p.z = speed * Math.cos(a2);
                         break;
                     case 5: // SPHERE
                     default:
                         const u = Math.random(), v = Math.random();
                         const th = u * 2.0 * Math.PI, ph = Math.acos(2.0 * v - 1.0);
-                        const radius = 3.5 * sizeFactor;
+                        const radius = 4.0 * sizeFactor;
                         p.x = radius * Math.sin(ph) * Math.cos(th); p.y = radius * Math.sin(ph) * Math.sin(th); p.z = radius * Math.cos(ph);
                         break;
                 }
@@ -291,46 +255,28 @@
                 handPresent = true;
                 const landmarks = results.multiHandLandmarks[0];
 
-                // FIXED YELLOW: Transformed coordinate math directly to match current view frustum calculations
-                handX = -(landmarks[0].x - 0.5) * viewWidthSpace; 
-                handY = -(landmarks[0].y - 0.5) * viewHeightSpace;
-                handZ = (landmarks[0].z) * 5;
+                // Dynamically spin the central object based on how fast or far the hand moves
+                targetSpeedY = (landmarks[0].x - 0.5) * 0.08;
+                targetSpeedX = (landmarks[0].y - 0.5) * 0.04;
 
+                // Color Shifts mapped to hand positions
                 baseColorHue = landmarks[0].x; 
 
+                // Pinch Tracking Mechanics
                 const dx = landmarks[4].x - landmarks[8].x;
                 const dy = landmarks[4].y - landmarks[8].y;
                 const distance = Math.sqrt(dx*dx + dy*dy);
-                handPinchRatio = THREE.MathUtils.clamp(distance * 5, 0.15, 2.5);
+                handPinchRatio = THREE.MathUtils.clamp(distance * 5, 0.2, 2.5);
 
                 const fingersUp = countFingers(landmarks);
                 if (fingersUp >= 1 && fingersUp <= 5 && fingersUp !== currentShapeIndex) {
                     generateShape(fingersUp);
                 }
-
-                // Map purple line positions instantly onto calibrated hand bounds
-                const linePositions = handSkeletonLines.geometry.attributes.position.array;
-                let lineIdx = 0;
-
-                HAND_CONNECTIONS.forEach(connection => {
-                    const startNode = landmarks[connection[0]];
-                    const endNode = landmarks[connection[1]];
-
-                    linePositions[lineIdx++] = -(startNode.x - 0.5) * viewWidthSpace;
-                    linePositions[lineIdx++] = -(startNode.y - 0.5) * viewHeightSpace;
-                    linePositions[lineIdx++] = (startNode.z) * 5;
-
-                    linePositions[lineIdx++] = -(endNode.x - 0.5) * viewWidthSpace;
-                    linePositions[lineIdx++] = -(endNode.y - 0.5) * viewHeightSpace;
-                    linePositions[lineIdx++] = (endNode.z) * 5;
-                });
-                
-                handSkeletonLines.geometry.attributes.position.needsUpdate = true;
-                handSkeletonLines.visible = true;
             } else {
                 handPresent = false;
-                handSkeletonLines.visible = false;
                 handPinchRatio = 1.0; 
+                targetSpeedY = 0.005;
+                targetSpeedX = 0.002;
             }
         }
 
@@ -351,15 +297,9 @@
             const posAttr = particleGeometry.attributes.position;
             const colAttr = particleGeometry.attributes.color;
             
-            // FIXED BLUE: Slow steady centering rotations when idle
-            if(!handPresent) {
-                particleSystem.rotation.y += 0.004;
-                particleSystem.rotation.x += 0.002;
-            } else {
-                // Smoothly return particle system rotations to 0 when hand controls movement orientation
-                particleSystem.rotation.y *= 0.95;
-                particleSystem.rotation.x *= 0.95;
-            }
+            // Central Object Spin Engine
+            particleSystem.rotation.y += (targetSpeedY - particleSystem.rotation.y) * 0.05;
+            particleSystem.rotation.x += (targetSpeedX - particleSystem.rotation.x) * 0.05;
 
             const lerpSpeed = 0.08;
             const targetColor = new THREE.Color();
@@ -367,21 +307,17 @@
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
 
+                // Dynamic template dimensions scaling via interactive adjustments
                 let tx = targetPositions[i3] * handPinchRatio;
                 let ty = targetPositions[i3+1] * handPinchRatio;
                 let tz = targetPositions[i3+2] * handPinchRatio;
 
-                if (handPresent) {
-                    tx += handX;
-                    ty += handY;
-                    tz += handZ;
-                }
-
+                // Positions remain perfectly centralized relative to absolute origin coordinates
                 currentPositions[i3]   += (tx - currentPositions[i3]) * lerpSpeed;
                 currentPositions[i3+1] += (ty - currentPositions[i3+1]) * lerpSpeed;
                 currentPositions[i3+2] += (tz - currentPositions[i3+2]) * lerpSpeed;
 
-                const hueOffset = (i / PARTICLE_COUNT) * 0.3; 
+                const hueOffset = (i / PARTICLE_COUNT) * 0.35; 
                 targetColor.setHSL((baseColorHue + hueOffset) % 1.0, 0.85, 0.55);
 
                 colors[i3]   += (targetColor.r - colors[i3]) * 0.15;
@@ -399,7 +335,6 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            updateSpaceScale();
         }
     </script>
 </body>
