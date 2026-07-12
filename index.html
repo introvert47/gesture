@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Dynamic 3D Particle Gesture Matrix</title>
     <style>
         * {
@@ -25,53 +25,104 @@
             left: 0;
             z-index: 1;
         }
-        /* Hidden video element used strictly for feeding frames to MediaPipe */
+        
+        /* Fixed Webcam Preview: Positioned nicely in the corner */
         #webcam {
-            display: none;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 2px solid #ffd700;
+            z-index: 20;
+            transform: scaleX(-1); /* Mirrors the preview for natural movement */
+            background: #222;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        /* Sleek UI overlay HUD */
+
+        /* Cleaned up HUD UI: Moved to bottom and minimized for mobile */
         #interface-hud {
             position: absolute;
-            top: 20px;
-            left: 20px;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 10;
             color: #ffffff;
-            pointer-events: none;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(8px);
-            max-width: 320px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 12px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            width: 90%;
+            max-width: 360px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+            transition: all 0.3s ease;
         }
-        h1 {
-            font-size: 1.1rem;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 12px;
-            color: #ffd700;
-        }
-        .status-item {
-            font-size: 0.85rem;
-            margin-bottom: 6px;
+        
+        .hud-header {
             display: flex;
             justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #ffd700;
+        }
+
+        /* Toggle button to open/close gesture guide on mobile */
+        #toggle-guide-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 8px;
+            font-size: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 8px;
+        }
+
+        .status-item {
             color: #cccccc;
         }
         .status-value {
             font-weight: bold;
             color: #ffffff;
+            margin-left: 4px;
         }
+        
+        /* Expandable guide section */
         .gesture-guide {
-            margin-top: 15px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            font-size: 0.8rem;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            font-size: 0.75rem;
             color: #aaaaaa;
         }
-        .gesture-line {
-            margin-bottom: 4px;
+        
+        .gesture-guide.open {
+            max-height: 150px;
+            margin-top: 8px;
         }
+
+        .gesture-line {
+            margin-bottom: 3px;
+        }
+
         #loading-screen {
             position: absolute;
             top: 0;
@@ -101,7 +152,7 @@
         }
     </style>
 
-    <!-- Production Dependencies (Three.js and MediaPipe Hands Legacy Solutions for supreme browser stability) -->
+    <!-- Production Dependencies -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -113,33 +164,51 @@
         <p id="loading-text">Initializing Camera & AI Hand Models...</p>
     </div>
 
+    <!-- Live Webcam Preview Element -->
+    <video id="webcam" autoplay playsinline muted></video>
+
     <div id="interface-hud">
-        <h1>Particle Core Matrix</h1>
-        <div class="status-item"><span>Tracking Status:</span><span id="track-status" class="status-value" style="color: #ff4a4a;">Searching...</span></div>
-        <div class="status-item"><span>Active Shape:</span><span id="current-template" class="status-value">Starfield</span></div>
-        <div class="status-item"><span>Expansion Ratio:</span><span id="expansion-ratio" class="status-value">1.0x</span></div>
+        <div class="hud-header">
+            <h1>Matrix Controls</h1>
+            <button id="toggle-guide-btn" onclick="toggleGuide()">Show Guide</button>
+        </div>
         
-        <div class="gesture-guide">
-            <div class="gesture-line"><strong>Pinch Thumb + Index:</strong> Scale Core System</div>
-            <div class="gesture-line"><strong>Move Hand:</strong> Shift Gravitational Center</div>
-            <div class="gesture-line"><strong>1 Finger Open:</strong> Morph to Heart</div>
-            <div class="gesture-line"><strong>2 Fingers Open:</strong> Morph to Cosmic Flower</div>
-            <div class="gesture-line"><strong>3 Fingers Open:</strong> Morph to Saturn Ring</div>
-            <div class="gesture-line"><strong>4 Fingers Open:</strong> Morph to Firework Grid</div>
-            <div class="gesture-line"><strong>Fist / Full Palm:</strong> Reset to Starfield</div>
+        <div class="status-grid">
+            <div class="status-item">Track: <span id="track-status" class="status-value" style="color: #ff4a4a;">Searching...</span></div>
+            <div class="status-item">Shape: <span id="current-template" class="status-value">Starfield</span></div>
+            <div class="status-item" style="grid-column: span 2;">Expansion: <span id="expansion-ratio" class="status-value">1.0x</span></div>
+        </div>
+        
+        <div id="gesture-guide-box" class="gesture-guide">
+            <div class="gesture-line"><strong>Pinch Thumb + Index:</strong> Scale System Size</div>
+            <div class="gesture-line"><strong>Move Hand:</strong> Shift Particle Gravity Center</div>
+            <div class="gesture-line"><strong>1 Finger:</strong> Heart | <strong>2 Fingers:</strong> Flower</div>
+            <div class="gesture-line"><strong>3 Fingers:</strong> Saturn | <strong>4 Fingers:</strong> Firework</div>
+            <div class="gesture-line"><strong>Fist / Open Palm:</strong> Reset Starfield</div>
         </div>
     </div>
 
-    <video id="webcam" autoplay playsinline></video>
     <div id="canvas-container"></div>
 
     <script>
+        // --- UI Interactions ---
+        function toggleGuide() {
+            const box = document.getElementById('gesture-guide-box');
+            const btn = document.getElementById('toggle-guide-btn');
+            if (box.classList.contains('open')) {
+                box.classList.remove('open');
+                btn.innerText = "Show Guide";
+            } else {
+                box.classList.add('open');
+                btn.innerText = "Hide Guide";
+            }
+        }
+
         // --- System Configurations ---
-        const PARTICLE_COUNT = 25000; 
+        const PARTICLE_COUNT = 15000; // Tweaked slightly lower to stay 100% smooth across mid-range mobile GPUs
         let scene, camera, renderer, particleGeometry, particleSystem;
         let currentPositions, targetPositions, originalColors;
         
-        // Interaction variables
         let targetExpansion = 1.0;
         let currentExpansion = 1.0;
         let targetGravitySource = new THREE.Vector3(0, 0, 0);
@@ -147,7 +216,6 @@
         let targetColorHue = 0.15; 
         let currentColorHue = 0.15;
 
-        // Elements
         const videoElement = document.getElementById('webcam');
         const loadingScreen = document.getElementById('loading-screen');
         const trackStatusUI = document.getElementById('track-status');
@@ -162,7 +230,6 @@
                 
                 switch(templateName) {
                     case 'heart':
-                        // 3D Parametric Heart Formula
                         const t = Math.PI * 2 * (i / PARTICLE_COUNT) * (1 + Math.sin(i) * 0.1);
                         const phi = Math.PI * (Math.random() - 0.5);
                         const hX = 16 * Math.pow(Math.sin(t), 3);
@@ -174,9 +241,8 @@
                         break;
 
                     case 'flower':
-                        // Rose curve / Phyllotaxis distribution morphed to 3D
                         const theta = i * 0.1 + 0.05;
-                        const radius = Math.sqrt(i) * 0.035;
+                        const radius = Math.sqrt(i) * 0.045;
                         const petals = Math.sin(theta * 5) * 1.5;
                         arr[i3] = (radius + petals) * Math.cos(theta);
                         arr[i3+1] = (radius + petals) * Math.sin(theta);
@@ -184,7 +250,6 @@
                         break;
 
                     case 'saturn':
-                        // Flat dense disk ring + inner spherical gas core
                         if (i < PARTICLE_COUNT * 0.7) {
                             const u = Math.random() + 0.6;
                             const rad = 3.5 * u;
@@ -204,7 +269,6 @@
                         break;
 
                     case 'fireworks':
-                        // Spherical shell matrices projecting outward 
                         const step = Math.floor(i / (PARTICLE_COUNT / 8));
                         const fTheta = Math.random() * Math.PI * 2;
                         const fPhi = Math.acos(2 * Math.random() - 1);
@@ -216,7 +280,6 @@
 
                     case 'starfield':
                     default:
-                        // Uniformly clustered sphere
                         const sTheta = Math.random() * Math.PI * 2;
                         const sPhi = Math.acos(2 * Math.random() - 1);
                         const sRadius = 3.5 * Math.pow(Math.random(), 0.5);
@@ -229,7 +292,7 @@
             return arr;
         }
 
-        // --- Initialize ThreeJS Context ---
+        // --- Initialize ThreeJS ---
         function initThree() {
             const container = document.getElementById('canvas-container');
             
@@ -241,17 +304,15 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit to 2 for exceptional mobile performance
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             container.appendChild(renderer.domElement);
 
-            // Allocation of Arrays
             currentPositions = generateTemplateCoordinates('starfield');
             targetPositions = new Float32Array(currentPositions);
             originalColors = new Float32Array(PARTICLE_COUNT * 3);
 
             particleGeometry = new THREE.BufferGeometry();
             
-            // Generate initial spectrum coloration map
             const colorObj = new THREE.Color();
             for(let i=0; i<PARTICLE_COUNT; i++) {
                 colorObj.setHSL(Math.random() * 0.2 + 0.05, 0.85, 0.6);
@@ -263,7 +324,6 @@
             particleGeometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
             particleGeometry.setAttribute('color', new THREE.BufferAttribute(originalColors, 3));
 
-            // Custom procedural glowing cross-platform circular texture
             const canvas = document.createElement('canvas');
             canvas.width = 16;
             canvas.height = 16;
@@ -276,7 +336,7 @@
             const pTexture = new THREE.CanvasTexture(canvas);
 
             const particleMaterial = new THREE.PointsMaterial({
-                size: 0.045,
+                size: window.innerWidth <= 768 ? 0.06 : 0.045, // Slightly bigger points on mobile for better visuals
                 map: pTexture,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
@@ -297,11 +357,10 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- Render Loop (Smooth Interpolations) ---
+        // --- Render Loop ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // Interpolate tracking transformations over time for smoothness (Easing)
             currentExpansion += (targetExpansion - currentExpansion) * 0.1;
             currentGravitySource.lerp(targetGravitySource, 0.08);
             currentColorHue += (targetColorHue - currentColorHue) * 0.05;
@@ -317,16 +376,13 @@
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
 
-                // Mathematical Noise Displacement Base
                 const noiseX = Math.sin(time + positions[i3+1] * 0.5) * 0.02;
                 const noiseY = Math.cos(time + positions[i3] * 0.5) * 0.02;
 
-                // Structural Transition Morphing
                 positions[i3]   += (targetPositions[i3] * currentExpansion + currentGravitySource.x + noiseX - positions[i3]) * 0.1;
                 positions[i3+1] += (targetPositions[i3+1] * currentExpansion + currentGravitySource.y + noiseY - positions[i3+1]) * 0.1;
                 positions[i3+2] += (targetPositions[i3+2] * currentExpansion + currentGravitySource.z - positions[i3+2]) * 0.1;
 
-                // Color Morphing via Dynamic HSL
                 colors[i3]   += (targetColorObj.r * originalColors[i3] * 2 - colors[i3]) * 0.05;
                 colors[i3+1] += (targetColorObj.g * originalColors[i3+1] * 2 - colors[i3+1]) * 0.05;
                 colors[i3+2] += (targetColorObj.b * originalColors[i3+2] * 2 - colors[i3+2]) * 0.05;
@@ -335,14 +391,13 @@
             posAttr.needsUpdate = true;
             colAttr.needsUpdate = true;
 
-            // Idle rotational animation
             particleSystem.rotation.y = time * 0.05;
             particleSystem.rotation.x = time * 0.02;
 
             renderer.render(scene, camera);
         }
 
-        // --- MediaPipe Gesture Integration Pipeline ---
+        // --- Tracking Result Handlers ---
         let lastShape = 'starfield';
         function processHandTrackingResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -351,34 +406,30 @@
 
                 const landmarks = results.multiHandLandmarks[0];
 
-                // 1. Calculate Core Center Point (Wrist + Base Middle Index) for Gravity Tracking
+                // Coordinates mapping
                 const coreX = (landmarks[0].x + landmarks[9].x) / 2;
                 const coreY = (landmarks[0].y + landmarks[9].y) / 2;
                 
-                // Map screen coordinates (0 to 1) securely to responsive 3D space coordinates
-                targetGravitySource.x = (0.5 - coreX) * 10; 
-                targetGravitySource.y = (0.5 - coreY) * 6; 
+                targetGravitySource.x = (0.5 - coreX) * 8; 
+                targetGravitySource.y = (0.5 - coreY) * 5; 
                 
-                // 2. Measure Pinch Scale Factor (Distance: Thumb Tip [4] to Index Tip [8])
+                // Pinch detection (Thumb to Index)
                 const dx = landmarks[4].x - landmarks[8].x;
                 const dy = landmarks[4].y - landmarks[8].y;
                 const dz = landmarks[4].z - landmarks[8].z;
                 const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
                 
-                // Normalize pinch to stable scaling range (0.2x to 3.0x)
                 targetExpansion = THREE.MathUtils.clamp(distance * 7.5, 0.2, 3.0);
                 expansionUI.innerText = targetExpansion.toFixed(2) + "x";
 
-                // 3. Dynamic Color Factor relative to Y axis posture
                 targetColorHue = THREE.MathUtils.clamp(coreY, 0.0, 1.0);
 
-                // 4. Extended Finger Counter Logic to handle Template Switching smoothly
-                // Structure: Verify if tip is strictly past the knuckle joint across Y axis boundary
+                // Extended finger counting logic
                 let openFingersCount = 0;
-                if (landmarks[8].y < landmarks[6].y) openFingersCount++;  // Index Finger
-                if (landmarks[12].y < landmarks[10].y) openFingersCount++; // Middle Finger
-                if (landmarks[16].y < landmarks[14].y) openFingersCount++; // Ring Finger
-                if (landmarks[20].y < landmarks[18].y) openFingersCount++; // Pinky Finger
+                if (landmarks[8].y < landmarks[6].y) openFingersCount++;  
+                if (landmarks[12].y < landmarks[10].y) openFingersCount++; 
+                if (landmarks[16].y < landmarks[14].y) openFingersCount++; 
+                if (landmarks[20].y < landmarks[18].y) openFingersCount++; 
 
                 let selectedShape = 'starfield';
                 if (openFingersCount === 1) selectedShape = 'heart';
@@ -393,7 +444,6 @@
                     templateUI.innerText = selectedShape.charAt(0).toUpperCase() + selectedShape.slice(1);
                 }
             } else {
-                // Return gracefully to default state when hand goes completely off camera field
                 trackStatusUI.innerText = "Searching...";
                 trackStatusUI.style.color = "#ff4a4a";
                 targetExpansion = 1.0;
@@ -407,7 +457,7 @@
             }
         }
 
-        // --- Video Stream & AI Model Handshake initialization ---
+        // --- Core Application Setup ---
         async function runSetup() {
             initThree();
 
@@ -418,30 +468,31 @@
             hands.setOptions({
                 maxNumHands: 1,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.6,
-                minTrackingConfidence: 0.6
+                minDetectionConfidence: 0.55,
+                minTrackingConfidence: 0.55
             });
 
             hands.onResults(processHandTrackingResults);
 
+            // Handle mobile aspect ratio feeds cleanly
+            const isMobile = window.innerWidth <= 768;
             const cameraDevice = new Camera(videoElement, {
                 onFrame: async () => {
                     await hands.send({ image: videoElement });
                 },
-                width: window.innerWidth <= 768 ? 480 : 640,
-                height: window.innerWidth <= 768 ? 360 : 480
+                width: isMobile ? 360 : 640,
+                height: isMobile ? 360 : 480
             });
 
             cameraDevice.start()
                 .then(() => {
-                    // Hide loading dashboard beautifully once camera begins polling frames successfully
                     loadingScreen.style.opacity = 0;
                     setTimeout(() => loadingScreen.style.display = 'none', 500);
                 })
                 .catch((err) => {
                     document.getElementById('loading-text').innerHTML = 
-                        "<span style='color: #ff4a4a;'>Webcam Access Error. Ensure permissions are granted.</span>";
-                    console.error("Camera Initializer Failed: ", err);
+                        "<span style='color: #ff4a4a;'>Camera error. Check permissions.</span>";
+                    console.error(err);
                 });
         }
 
